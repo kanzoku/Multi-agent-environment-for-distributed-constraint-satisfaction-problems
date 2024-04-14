@@ -36,10 +36,12 @@ class AttributAgent(Process):
     def log(self, message):
         # Sendet Log-Nachrichten an die Log-Queue
         self.log_queue.put(f"Agent {self.agent_id} ({self.name}) - {message}")
+        # TODO: Implementieren der Funktion, die Log-Nachrichten an die Log-Queue/Log-Agent sendet
 
     def send_message(self, recipient_queue, message):
         # Sendet Nachrichten an andere Agenten
         recipient_queue.put((self.agent_id, message))
+        # TODO: Implementieren der Funktion, die Nachrichten an andere Agenten sendet
 
     def receive_message(self, message_data):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
@@ -55,10 +57,13 @@ class AttributAgent(Process):
         # zu erfüllen ansonsten wird eine "nogood"-Nachricht an den vorherigen Agenten gesendet
         self.agent_view = [domain for domain in self.all_domains if self.is_valid(domain)]
         self.log(f"Updated domains to: {self.agent_view}")
+        # TODO: Implementieren der Funktion, die die Domains in nogood schiebt/aktualisiert
+        #  und entweder andere Domain überprüft oder an vorherigen Agenten nogood sendet
 
     def ok(self, message):
         # Bestätigt, dass die Constraints in dem Pfad erfüllt sind
         self.log("Received OK message.")
+        # TODO: Funktionalität implemntieren und Konzept überlegen
 
     def check(self, message):
         # Überprüft, ob es eine Möglichkeit gibt die Constraints zu erfüllen mit
@@ -68,6 +73,8 @@ class AttributAgent(Process):
             self.log("Conflict found in nogood list.")
         else:
             self.log("No conflicts with nogood list.")
+    # TODO: Funktion muss noch implementiert werden, dabei geschaut werden ob es eine Domain gibt,
+    #  die die bereits gesetzten Constraints erfüllt und entsprechend nachfolgende Agenten anspricht
 
     def stop(self, message):
         # Beendet den Agenten
@@ -100,7 +107,8 @@ class AttributAgent(Process):
         for domain in self.all_domains:
             if domain not in fulfillments:
                 self.agent_view[domainString].append(domain)
-                self.send_message(self.connections[0], "check", domainString+";"+self.name+str(domain))
+    # TODO: Implementieren der Funktion senden von Check an andere Agenten die
+    #  Constraint haben aber noch nicht gesetzt sind
 
 
     def run(self):
@@ -115,4 +123,4 @@ class AttributAgent(Process):
 if __name__ == "__main__":
     setup_logger()
     log_queue = Queue()
-
+    # TODO Initialisierung der Agenten und des Sodoku-Problems und Start-Message an den ersten Agenten senden

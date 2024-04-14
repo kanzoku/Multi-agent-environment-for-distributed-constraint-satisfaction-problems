@@ -112,7 +112,7 @@ class AttributAgent(Process):
 
 
     def run(self):
-        # Hauptloop des Agenten, um Nachrichten zu empfangen
+        # Hauptloop des Agenten, um Nachrichten zu empfangen und verarbeiten
         while True:
             message = self.log_queue.get()  # Warten auf eine neue Nachricht
             sender_id, msg = message

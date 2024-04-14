@@ -75,9 +75,6 @@ class AttributAgent:
         # Hauptloop des Agenten, um Nachrichten zu empfangen
         while True:
             message = self.log_queue.get()  # Warten auf eine neue Nachricht
-            if message is None:
-                self.log("Stopping agent.")
-                break  # Beenden, wenn die Nachricht None ist
             sender_id, msg = message
             self.log(f"Received message from agent {sender_id}: {msg}")
             self.receive_message(msg)
@@ -87,21 +84,3 @@ if __name__ == "__main__":
     setup_logger()
     log_queue = Queue()
 
-    # Agent-Prozesse erstellen
-    agents = [Process(target=agent_attribut, args=(log_queue, i)) for i in range(5)]
-
-    # Agent-Prozesse starten
-    for agent in agents:
-        agent.start()
-
-    # Log-Nachrichten senden
-    for _ in range(10):
-        log_queue.put("Eine wichtige Nachricht")
-
-    # Agent-Prozesse beenden
-    for _ in agents:
-        log_queue.put(None)
-
-    # Warten, bis alle Agent-Prozesse beendet sind
-    for agent in agents:
-        agent.join()

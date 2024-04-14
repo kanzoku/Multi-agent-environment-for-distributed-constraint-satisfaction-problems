@@ -8,7 +8,6 @@ def setup_logger():
     config = {
         "handlers": [
             {"sink": "file.log", "enqueue": True, "level": "INFO"},
-            # Sie können weitere Sinks hinzufügen, wenn nötig
         ],
     }
     logger.configure(**config)

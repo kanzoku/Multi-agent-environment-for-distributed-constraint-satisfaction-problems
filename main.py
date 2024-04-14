@@ -13,21 +13,24 @@ def setup_logger():
     logger.configure(**config)
 
 
-class AttributAgent:
-    def __init__(self, agent_id, log_queue, name, connections):
+class AttributAgent(Process):
+    def __init__(self, agent_id, log_queue, name, connections, constraints, all_domains):
+        super(AttributAgent, self).__init__()
         self.agent_id = agent_id  # ID des Agenten
         self.name = name  # Name des Agenten
         self.log_queue = log_queue  # Queue für Log-Nachrichten
-        self.connections = connections  # Ein Dictionary von Verbindungen zu anderen Agenten
-        self.constraints = []  # Liste von Constraints zu anderen Agenten
-        self.all_domains = []  # Liste aller möglichen eigenen Domains
-        self.nogood_dict = []  # Dictionary mit No-goods Key: Constraint-String Value: Liste von no-good Domains
+        self.connections = connections  # Ein Dictionary von Verbindungen(Pipes) zu anderen Agenten
+        self.constraints = constraints  # Dict von Constraints zu anderen Agenten
+        self.all_domains = all_domains  # Liste aller möglichen eigenen Domains
+        self.nogood_dict = dict()  # Dictionary mit No-goods Key: Constraint-String Value: Liste von no-good Domains
+        self.agent_view = dict()  # Dictionary mit den Domains, die der Agent betrachtet
 
         self.message_handlers = {
             "ok": self.ok,
             "check": self.check,
             "nogood": self.nogood,
-            "kill": self.stop
+            "kill": self.stop,
+            "startagent": self.start
         }
 
     def log(self, message):
@@ -41,7 +44,7 @@ class AttributAgent:
     def receive_message(self, message_data):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
         header, message = message_data
-        handler = self.message_handlers.get(header, self.handle_unknown_message)
+        handler = self.message_handlers.get(header)
         if handler:
             handler(message)  # Rufe die zugehörige Funktion auf
         else:
@@ -61,7 +64,7 @@ class AttributAgent:
         # Überprüft, ob es eine Möglichkeit gibt die Constraints zu erfüllen mit
         # den aktuellen Domains-String und fragt die anderen nicht im Domain-String
         # enthaltenen Agenten, ob die Auswahl gültig ist
-        if any(domain in self.nogood_list for domain in self.agent_view):
+        if any(domain in self.nogood_dict for domain in self.agent_view):
             self.log("Conflict found in nogood list.")
         else:
             self.log("No conflicts with nogood list.")
@@ -70,14 +73,40 @@ class AttributAgent:
         # Beendet den Agenten
         self.log("Received kill message.")
         self.log("Stopping agent.")
+        self.join()
+        self.kill()
+
+    def startagent(self, message):
+        # Startet den Agenten
+        self.log("Received start message.")
+        self.log("Starting agent.")
+        self.solve("")
+
+    def solve(self, domainString):
+        # Löst alle Constraints mit den gegebenen Domains und findet valide Lösungsmenge
+        fulfillments = []
+        assignments = domainString.split(';')
+        for assignment in assignments:
+            if assignment.strip():  # Überprüfe, ob die Zuweisung leer ist
+                var, value = assignment.split('=')
+                var = var.strip()  # Entferne vermeintliche Leerzeichen
+                value = int(value.strip())  # Konvertiere Wert in Integer
+
+                # Überprüfe, ob die Variable in den Constraints enthalten ist
+                if var in self.constraints:
+                    constraint_value = self.constraints[var]
+                    if value != constraint_value:  # Überprüfe auf Ungleichheit
+                        fulfillments.append(value)  # Füge zu den Erfüllungen hinzu
+        for domain in self.all_domains:
+            if domain not in fulfillments:
+                self.agent_view[domainString].append(domain)
+                self.send_message(self.connections[0], "check", domainString+";"+self.name+str(domain))
+
 
     def run(self):
         # Hauptloop des Agenten, um Nachrichten zu empfangen
         while True:
             message = self.log_queue.get()  # Warten auf eine neue Nachricht
-            if message is None:
-                self.log("Stopping agent.")
-                break  # Beenden, wenn die Nachricht None ist
             sender_id, msg = message
             self.log(f"Received message from agent {sender_id}: {msg}")
             self.receive_message(msg)
@@ -87,21 +116,3 @@ if __name__ == "__main__":
     setup_logger()
     log_queue = Queue()
 
-    # Agent-Prozesse erstellen
-    agents = [Process(target=agent_attribut, args=(log_queue, i)) for i in range(5)]
-
-    # Agent-Prozesse starten
-    for agent in agents:
-        agent.start()
-
-    # Log-Nachrichten senden
-    for _ in range(10):
-        log_queue.put("Eine wichtige Nachricht")
-
-    # Agent-Prozesse beenden
-    for _ in agents:
-        log_queue.put(None)
-
-    # Warten, bis alle Agent-Prozesse beendet sind
-    for agent in agents:
-        agent.join()

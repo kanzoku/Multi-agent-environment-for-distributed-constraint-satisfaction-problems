@@ -8,7 +8,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 from csp import Constraint_Satisfaction_Problem
-from csp_solver import CSP_Solver
+#from csp_solver import CSP_Solver
 import string
 import math
 import random as rnd

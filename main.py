@@ -28,7 +28,7 @@ class AttributAgent:
             "ok": self.ok,
             "check": self.check,
             "nogood": self.nogood,
-            "None": self.stop
+            "kill": self.stop
         }
 
     def log(self, message):
@@ -39,21 +39,26 @@ class AttributAgent:
         # Sendet Nachrichten an andere Agenten
         recipient_queue.put((self.agent_id, message))
 
-    def receive_message(self, message):
+    def receive_message(self, message_data):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
-        handler = self.message_handlers.get(message)
+        header, message = message_data
+        handler = self.message_handlers.get(header, self.handle_unknown_message)
         if handler:
-            handler()  # Rufe die zugehörige Funktion auf
+            handler(message)  # Rufe die zugehörige Funktion auf
         else:
-            self.log(f"Received unknown message type: {message}")
+            self.log(f"Received unknown message type: {header} with message: {message}")
 
-    def update_domains(self):
-        # Aktualisiert die Liste der validen Domains
+    def nogood(self, message):
+        # Aktualisiert das Dictionary der No-goods und probiert die Constraints mit einer neuen Domain
+        # zu erfüllen ansonsten wird eine "nogood"-Nachricht an den vorherigen Agenten gesendet
         self.agent_view = [domain for domain in self.all_domains if self.is_valid(domain)]
         self.log(f"Updated domains to: {self.agent_view}")
 
+    def ok(self, message):
+        # Bestätigt, dass die Constraints in dem Pfad erfüllt sind
+        self.log("Received OK message.")
 
-    def check(self):
+    def check(self, message):
         # Überprüft, ob es eine Möglichkeit gibt die Constraints zu erfüllen mit
         # den aktuellen Domains-String und fragt die anderen nicht im Domain-String
         # enthaltenen Agenten, ob die Auswahl gültig ist
@@ -61,6 +66,11 @@ class AttributAgent:
             self.log("Conflict found in nogood list.")
         else:
             self.log("No conflicts with nogood list.")
+
+    def stop(self, message):
+        # Beendet den Agenten
+        self.log("Received kill message.")
+        self.log("Stopping agent.")
 
     def run(self):
         # Hauptloop des Agenten, um Nachrichten zu empfangen

@@ -141,7 +141,7 @@ class AttributAgent(Process):
 
 
 if __name__ == "__main__":
-    #setup_logger()
+    setup_logger()
     #log_queue = Queue()
     # TODO Initialisierung der Agenten und des Sodoku-Problems und Start-Message an den ersten Agenten senden
     #manager = Manager()

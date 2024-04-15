@@ -1,7 +1,8 @@
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Manager
 from loguru import logger
-import sudoku_problem
+from sudoku_problem import Sudoku_Problem
 import time
+import json
 
 
 def setup_logger():
@@ -19,67 +20,100 @@ class AttributAgent(Process):
         self.agent_id = agent_id  # ID des Agenten
         self.name = name  # Name des Agenten
         self.log_queue = log_queue  # Queue für Log-Nachrichten
-        self.connections = connections  # Ein Dictionary von Verbindungen(Pipes) zu anderen Agenten
+        self.task_queue = Queue()  # Queue für Aufgaben
+        self.connections = connections  # Ein Dictionary von Verbindungen zu anderen Agenten
         self.constraints = constraints  # Dict von Constraints zu anderen Agenten
-        self.all_domains = all_domains  # Liste aller möglichen eigenen Domains
+        self.all_domains = all_domains  # Liste aller möglicher eigener Domains
         self.nogood_dict = dict()  # Dictionary mit No-goods Key: Constraint-String Value: Liste von no-good Domains
         self.agent_view = dict()  # Dictionary mit den Domains, die der Agent betrachtet
 
         self.message_handlers = {
-            "ok": self.ok,
             "check": self.check,
             "nogood": self.nogood,
             "kill": self.stop,
             "startagent": self.start
         }
 
+    def last_sender(self, constraintDict):
+        # Gibt den Namen des vorherigen Agenten zurück
+        return list(constraintDict.keys())[-1]
+
+    def remove_last(self, identifier):
+        # Entfernt den letzten Agenten aus dem Constraint-Identifier
+        return identifier[:identifier.rfind(";")]
+    
     def log(self, message):
         # Sendet Log-Nachrichten an die Log-Queue
         self.log_queue.put(f"Agent {self.agent_id} ({self.name}) - {message}")
-        # TODO: Implementieren der Funktion, die Log-Nachrichten an die Log-Queue/Log-Agent sendet
 
     def send_message(self, recipient_queue, message):
         # Sendet Nachrichten an andere Agenten
-        recipient_queue.put((self.agent_id, message))
-        # TODO: Implementieren der Funktion, die Nachrichten an andere Agenten sendet
+        recipient_queue.put((self.name, message))
 
     def receive_message(self, message_data):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
         header, message = message_data
         handler = self.message_handlers.get(header)
         if handler:
-            handler(message)  # Rufe die zugehörige Funktion auf
+            constraintDict = json.loads(message) # Lade die Constraints aus der Nachricht als Dictionary
+            handler(constraintDict)  # Rufe die zugehörige Funktion auf
         else:
             self.log(f"Received unknown message type: {header} with message: {message}")
 
-    def nogood(self, message):
+    def nogood(self, constraintDict):
         # Aktualisiert das Dictionary der No-goods und probiert die Constraints mit einer neuen Domain
         # zu erfüllen ansonsten wird eine "nogood"-Nachricht an den vorherigen Agenten gesendet
-        self.agent_view = [domain for domain in self.all_domains if self.is_valid(domain)]
-        self.log(f"Updated domains to: {self.agent_view}")
-        # TODO: Implementieren der Funktion, die die Domains in nogood schiebt/aktualisiert
-        #  und entweder andere Domain überprüft oder an vorherigen Agenten nogood sendet
+        self.log(f"Received nogood from {constraintDict['identifier']}")
+        old_identifier = self.remove_last(constraintDict["identifier"])
+        if old_identifier not in self.nogood_dict:
+            self.nogood_dict[old_identifier] = []
+        self.nogood_dict[old_identifier].append(constraintDict[self.name])
+        self.agent_view[old_identifier].remove(0)
+        if len(self.agent_view[old_identifier]) == 0:
+            constraintDict["identifier"] = old_identifier
+            constraintDict.pop(self.name, None)
+            self.send_message(self.connections[self.last_sender(constraintDict)],
+                              json.dumps({"nogood": constraintDict}))
+        else:
+            constraintDict["identifier"] = (constraintDict["identifier"] +
+                                            f";{self.name}={self.agent_view[constraintDict['identifier']][0]}")
+            constraintDict[self.name] = self.agent_view[old_identifier][0]
+            self.check(constraintDict)
+            for constraint in self.constraints:
+                if constraint not in constraintDict:
+                    self.send_message(self.connections[constraint], json.dumps({"check": constraintDict}))
 
-    def ok(self, message):
-        # Bestätigt, dass die Constraints in dem Pfad erfüllt sind
-        self.log("Received OK message.")
-        # TODO: Funktionalität implemntieren und Konzept überlegen
 
-    def check(self, message):
+    def check(self, constraintDict):
         # Überprüft, ob es eine Möglichkeit gibt die Constraints zu erfüllen mit
         # den aktuellen Domains-String und fragt die anderen nicht im Domain-String
         # enthaltenen Agenten, ob die Auswahl gültig ist
-        if any(domain in self.nogood_dict for domain in self.agent_view):
-            self.log("Conflict found in nogood list.")
-        else:
-            self.log("No conflicts with nogood list.")
-    # TODO: Funktion muss noch implementiert werden, dabei geschaut werden ob es eine Domain gibt,
-    #  die die bereits gesetzten Constraints erfüllt und entsprechend nachfolgende Agenten anspricht
+        if constraintDict["identifier"] not in self.agent_view:
+            self.agent_view[constraintDict["identifier"]] = []
+            self.solve(constraintDict)
+            if len(self.agent_view[constraintDict["identifier"]]) == 0:
+                # TODO Sende nogood an vorherigen Agenten
+                constraintDict.pop(self.name, None)
+                self.send_message(self.connections[self.last_sender(constraintDict)]
+                                  , json.dumps({"nogood": constraintDict}))
+                pass
+        constraintDict["identifier"] = (constraintDict["identifier"] +
+                                        f";{self.name}={self.agent_view[constraintDict['identifier']][0]}")
+        constraintDict[self.name] = self.agent_view[constraintDict["identifier"]][0]
+
+        i = 0
+        for constraint in self.constraints:
+            if constraint not in constraintDict:
+                self.send_message(self.connections[constraint], json.dumps({"check": constraintDict}))
+                i += 1
+        if i == 0:
+            self.send_message(self.connections["log"], json.dumps({"ok": constraintDict}))
 
     def stop(self, message):
         # Beendet den Agenten
         self.log("Received kill message.")
         self.log("Stopping agent.")
+        self.task_queue.close()
         self.join()
         self.kill()
 
@@ -87,40 +121,33 @@ class AttributAgent(Process):
         # Startet den Agenten
         self.log("Received start message.")
         self.log("Starting agent.")
-        self.solve("")
+        self.check(constraintDict={"identifier": self.name})
 
-    def solve(self, domainString):
+    def solve(self, constraintDict):
         # Löst alle Constraints mit den gegebenen Domains und findet valide Lösungsmenge
-        fulfillments = []
-        assignments = domainString.split(';')
-        for assignment in assignments:
-            if assignment.strip():  # Überprüfe, ob die Zuweisung leer ist
-                var, value = assignment.split('=')
-                var = var.strip()  # Entferne vermeintliche Leerzeichen
-                value = int(value.strip())  # Konvertiere Wert in Integer
-
-                # Überprüfe, ob die Variable in den Constraints enthalten ist
-                if var in self.constraints:
-                    constraint_value = self.constraints[var]
-                    if value != constraint_value:  # Überprüfe auf Ungleichheit
-                        fulfillments.append(value)  # Füge zu den Erfüllungen hinzu
+        unique_values = set(constraintDict.values())
         for domain in self.all_domains:
-            if domain not in fulfillments:
-                self.agent_view[domainString].append(domain)
-    # TODO: Implementieren der Funktion senden von Check an andere Agenten die
-    #  Constraint haben aber noch nicht gesetzt sind
-
+            if domain not in unique_values:
+                self.agent_view[constraintDict["identifier"]].append(domain)
+        self.log(f"Found domains: {self.agent_view} for {constraintDict['identifier']}")
 
     def run(self):
         # Hauptloop des Agenten, um Nachrichten zu empfangen und verarbeiten
         while True:
-            message = self.log_queue.get()  # Warten auf eine neue Nachricht
-            sender_id, msg = message
-            self.log(f"Received message from agent {sender_id}: {msg}")
+            message = self.task_queue.get()  # Warten auf eine neue Nachricht
+            name, msg = message
+            self.log(f"Received message from agent {name}: {msg}")
             self.receive_message(msg)
 
 
 if __name__ == "__main__":
-    setup_logger()
-    log_queue = Queue()
+    #setup_logger()
+    #log_queue = Queue()
     # TODO Initialisierung der Agenten und des Sodoku-Problems und Start-Message an den ersten Agenten senden
+    #manager = Manager()
+    problem = Sudoku_Problem(4, n_ary=False, conflict=True)
+    #print(problem.constraints)
+    #print(problem.cells)
+    for cell in problem.cells:
+        for variable in cell:
+            print(variable)

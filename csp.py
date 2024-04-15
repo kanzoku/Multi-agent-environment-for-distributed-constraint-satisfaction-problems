@@ -299,9 +299,9 @@ class Constraint_Satisfaction_Problem:
 # -----------------------------------------------------------------------------
 
 # Create the constraint satisfaction problem as instance
-csp = Constraint_Satisfaction_Problem()
+#csp = Constraint_Satisfaction_Problem()
 # file = r"C:\Users\Herrmann\Documents\Herrmann\Meine Bibliothek\08_Forschung\csp_solution_envioment\csp_definition.xlsx"
-csp.csp_from_excel()
+#csp.csp_from_excel()
 
 # Add the variables
 # csp.add_domain("x", list(range(1,4)))

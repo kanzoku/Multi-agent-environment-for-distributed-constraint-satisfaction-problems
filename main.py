@@ -27,6 +27,7 @@ class AttributAgent(Process):
         self.all_domains = sorted(all_domains)  # Liste aller möglicher eigener Domains
         self.nogood_dict = dict()  # Dictionary mit No-goods Key: Constraint-String Value: Liste von no-good Domains
         self.agent_view = dict()  # Dictionary mit den Domains, die der Agent betrachtet
+        self.running = True
 
         self.message_handlers = {
             "check": self.check,
@@ -45,26 +46,27 @@ class AttributAgent(Process):
     
     def log(self, message):
         # Sendet Log-Nachrichten an die Log-Queue
-        self.log_queue.put(f"Agent {self.agent_id} ({self.name}) - {message}")
+        print(message)
+        #self.log_queue.put(f"Agent {self.agent_id} ({self.name}) - {message}")
 
-    def send_message(self, recipient_queue, message):
+    def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
-        recipient_queue.put((self.name, message))
+        message_data = json.dumps({"header": header, "message": message})
+        recipient_queue.put((self.name, message_data))
 
-    def receive_message(self, message_data):
+    def receive_message(self, header, message):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
-        header, message = message_data
         handler = self.message_handlers.get(header)
         if handler:
-            constraintDict = json.loads(message) # Lade die Constraints aus der Nachricht als Dictionary
-            handler(constraintDict)  # Rufe die zugehörige Funktion auf
+            handler(message)  # Rufe die zugehörige Funktion auf
         else:
-            self.log(f"Received unknown message type: {header} with message: {message}")
+            print(f"Received unknown message type: {header} with message: {message}")
+            #self.log(f"Received unknown message type: {header} with message: {message}")
 
     def nogood(self, constraintDict):
         # Aktualisiert das Dictionary der No-goods und probiert die Constraints mit einer neuen Domain
         # zu erfüllen ansonsten wird eine "nogood"-Nachricht an den vorherigen Agenten gesendet
-        self.log(f"Received nogood from {constraintDict['identifier']}")
+        #self.log(f"Received nogood from {constraintDict['identifier']}")
         old_identifier = self.remove_last(constraintDict["identifier"])
         if old_identifier not in self.nogood_dict:
             self.nogood_dict[old_identifier] = []
@@ -74,14 +76,14 @@ class AttributAgent(Process):
             constraintDict["identifier"] = old_identifier
             constraintDict.pop(self.name, None)
             self.send_message(self.connections[self.last_sender(constraintDict)],
-                              json.dumps({"nogood": constraintDict}))
+                              "nogood", constraintDict)
         else:
             constraintDict["identifier"] = (old_identifier +
                                             f";{self.name}={self.agent_view[constraintDict['identifier']][0]}")
             constraintDict[self.name] = self.agent_view[old_identifier][0]
             for constraint in self.constraints:
                 if constraint not in constraintDict:
-                    self.send_message(self.connections[constraint], json.dumps({"check": constraintDict}))
+                    self.send_message(self.connections[constraint], "check", constraintDict)
 
     def check(self, constraintDict):
         # Überprüft, ob es eine Möglichkeit gibt die Constraints zu erfüllen mit
@@ -93,7 +95,7 @@ class AttributAgent(Process):
             if len(self.agent_view[constraintDict["identifier"]]) == 0:
                 constraintDict.pop(self.name, None)
                 self.send_message(self.connections[self.last_sender(constraintDict)]
-                                  , json.dumps({"nogood": constraintDict}))
+                                  , "nogood", constraintDict)
                 pass
         constraintDict["identifier"] = (constraintDict["identifier"] +
                                         f";{self.name}={self.agent_view[constraintDict['identifier']][0]}")
@@ -102,23 +104,23 @@ class AttributAgent(Process):
         i = 0
         for constraint in self.constraints:
             if constraint not in constraintDict:
-                self.send_message(self.connections[constraint], json.dumps({"check": constraintDict}))
+                self.send_message(self.connections[constraint], "check", constraintDict)
                 i += 1
         if i == 0:
-            self.send_message(self.connections["log"], json.dumps({"ok": constraintDict}))
+            print(f"Found solution: {constraintDict}")
 
     def stop(self, message):
         # Beendet den Agenten
-        self.log("Received kill message.")
-        self.log("Stopping agent.")
-        self.task_queue.close()
-        self.join()
-        self.kill()
+        #self.log("Received kill message.")
+        #self.log("Stopping agent.")
+        #self.join()
+        self.running = False
+        print(f"Agent {self.agent_id} ({self.name}) stopped.")
 
     def startagent(self, message):
         # Startet den Agenten
-        self.log("Received start message.")
-        self.log("Starting agent.")
+        #self.log("Received start message.")
+        #self.log("Starting agent.")
         self.check(constraintDict={"identifier": self.name})
 
     def solve(self, constraintDict):
@@ -130,15 +132,17 @@ class AttributAgent(Process):
         for domain in self.all_domains:
             if domain not in unique_values:
                 self.agent_view[constraintDict["identifier"]].append(domain)
-        self.log(f"Found domains: {self.agent_view} for {constraintDict['identifier']}")
+        #self.log(f"Found domains: {self.agent_view} for {constraintDict['identifier']}")
 
     def run(self):
         # Hauptloop des Agenten, um Nachrichten zu empfangen und verarbeiten
-        while True:
-            message = self.task_queue.get()  # Warten auf eine neue Nachricht
-            name, msg = message
-            self.log(f"Received message from agent {name}: {msg}")
-            self.receive_message(msg)
+        while self.running:
+            sender, message_data = self.task_queue.get()  # Warten auf eine neue Nachricht
+            message_dict = json.loads(message_data)
+            header = message_dict["header"]
+            message = message_dict["message"]
+            #self.log(f"Received message from agent {sender}: {message_data}")
+            self.receive_message(header, message)
 
 
 if __name__ == "__main__":
@@ -178,9 +182,14 @@ if __name__ == "__main__":
         for agent in agents:
             agent.start()
         print("Schlafe nun")
-        time.sleep(60)
+        time.sleep(1)
         print("Wach auf")
-        #for agent in agents:
-            #agent.send_message(agent.task_queue, json.dumps({"kill": ""}))
-
+        for agent in agents:
+            agent.send_message(agent.task_queue, "kill", {"kill": ""})
+        print("Schlafe nun")
+        time.sleep(1)
+        print("Wach auf")
+        log_queue.close()
+        for agent in agents:
+            agent.join()
 

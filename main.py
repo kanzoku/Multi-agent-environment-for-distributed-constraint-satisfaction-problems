@@ -1,3 +1,4 @@
+import multiprocessing
 from multiprocessing import Process, Queue, Manager
 from loguru import logger
 from sudoku_problem import Sudoku_Problem
@@ -82,7 +83,6 @@ class AttributAgent(Process):
                 if constraint not in constraintDict:
                     self.send_message(self.connections[constraint], json.dumps({"check": constraintDict}))
 
-
     def check(self, constraintDict):
         # Überprüft, ob es eine Möglichkeit gibt die Constraints zu erfüllen mit
         # den aktuellen Domains-String und fragt die anderen nicht im Domain-String
@@ -91,7 +91,6 @@ class AttributAgent(Process):
             self.agent_view[constraintDict["identifier"]] = []
             self.solve(constraintDict)
             if len(self.agent_view[constraintDict["identifier"]]) == 0:
-                # TODO Sende nogood an vorherigen Agenten
                 constraintDict.pop(self.name, None)
                 self.send_message(self.connections[self.last_sender(constraintDict)]
                                   , json.dumps({"nogood": constraintDict}))
@@ -143,13 +142,45 @@ class AttributAgent(Process):
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn')
     setup_logger()
-    #log_queue = Queue()
+    log_queue = Queue()
     # TODO Initialisierung der Agenten und des Sodoku-Problems und Start-Message an den ersten Agenten senden
-    #manager = Manager()
-    problem = Sudoku_Problem(4, n_ary=False, conflict=True)
-    #print(problem.constraints)
-    #print(problem.cells)
-    for cell in problem.cells:
-        for variable in cell:
-            print(variable)
+    with Manager() as manager:
+        n = 4
+        all_domain_list = list(range(1, n + 1))
+        problem = Sudoku_Problem(n, n_ary=False, conflict=False)
+        #print(problem.constraints)
+        constraint_dict = {}
+        for constraint, variables in problem.constraints:
+            for var in variables:
+                if var not in constraint_dict:
+                    constraint_dict[var] = {}
+            # Fügen Sie alle verbundenen Variablen und ihre entsprechenden Constraints hinzu
+                for connected_var in variables:
+                    if connected_var != var:
+                        constraint_dict[var][connected_var] = constraint
+        connections = dict()
+        for cell in problem.cells:
+            for variable in cell:
+                connections[variable] = manager.Queue()
+        agents = []
+        i = 0
+        for cell in problem.cells:
+            for variable in cell:
+                agent = AttributAgent(agent_id=i, log_queue=log_queue, name=variable,
+                                  connections=connections, constraints=constraint_dict[variable],
+                                  all_domains=all_domain_list)
+                agents.append(agent)
+                i += 1
+                #agent.start()
+
+        for agent in agents:
+            agent.start()
+        print("Schlafe nun")
+        time.sleep(60)
+        print("Wach auf")
+        #for agent in agents:
+            #agent.send_message(agent.task_queue, json.dumps({"kill": ""}))
+
+

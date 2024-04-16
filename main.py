@@ -20,10 +20,10 @@ class AttributAgent(Process):
         self.agent_id = agent_id  # ID des Agenten
         self.name = name  # Name des Agenten
         self.log_queue = log_queue  # Queue für Log-Nachrichten
-        self.task_queue = Queue()  # Queue für Aufgaben
+        self.task_queue = connections[self.name]  # Queue für Aufgaben
         self.connections = connections  # Ein Dictionary von Verbindungen zu anderen Agenten
         self.constraints = constraints  # Dict von Constraints zu anderen Agenten
-        self.all_domains = all_domains  # Liste aller möglicher eigener Domains
+        self.all_domains = sorted(all_domains)  # Liste aller möglicher eigener Domains
         self.nogood_dict = dict()  # Dictionary mit No-goods Key: Constraint-String Value: Liste von no-good Domains
         self.agent_view = dict()  # Dictionary mit den Domains, die der Agent betrachtet
 
@@ -68,17 +68,16 @@ class AttributAgent(Process):
         if old_identifier not in self.nogood_dict:
             self.nogood_dict[old_identifier] = []
         self.nogood_dict[old_identifier].append(constraintDict[self.name])
-        self.agent_view[old_identifier].remove(0)
+        self.agent_view[old_identifier].remove(constraintDict[self.name])
         if len(self.agent_view[old_identifier]) == 0:
             constraintDict["identifier"] = old_identifier
             constraintDict.pop(self.name, None)
             self.send_message(self.connections[self.last_sender(constraintDict)],
                               json.dumps({"nogood": constraintDict}))
         else:
-            constraintDict["identifier"] = (constraintDict["identifier"] +
+            constraintDict["identifier"] = (old_identifier +
                                             f";{self.name}={self.agent_view[constraintDict['identifier']][0]}")
             constraintDict[self.name] = self.agent_view[old_identifier][0]
-            self.check(constraintDict)
             for constraint in self.constraints:
                 if constraint not in constraintDict:
                     self.send_message(self.connections[constraint], json.dumps({"check": constraintDict}))
@@ -125,7 +124,10 @@ class AttributAgent(Process):
 
     def solve(self, constraintDict):
         # Löst alle Constraints mit den gegebenen Domains und findet valide Lösungsmenge
-        unique_values = set(constraintDict.values())
+        unique_values = set()
+        for constraint in constraintDict:
+            if self.constraints.contains(constraint):
+                unique_values.add(constraintDict[constraint])
         for domain in self.all_domains:
             if domain not in unique_values:
                 self.agent_view[constraintDict["identifier"]].append(domain)

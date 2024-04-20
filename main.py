@@ -4,6 +4,7 @@ from loguru import logger
 from sudoku_problem import Sudoku_Problem
 import time
 import json
+from UnitTest import n9_test1_occupation_dict
 
 
 def setup_logger():
@@ -16,7 +17,8 @@ def setup_logger():
 
 
 class AttributAgent(Process):
-    def __init__(self, agent_id, log_queue, name, connections, constraints, all_domains, n=4):
+    def __init__(self, agent_id, log_queue, name, connections, constraints, all_domains,
+                 occupation, n=4, *args, **kwargs):
         super(AttributAgent, self).__init__()
         self.agent_id = agent_id  # ID des Agenten
         self.name = name  # Name des Agenten
@@ -24,11 +26,12 @@ class AttributAgent(Process):
         self.task_queue = connections[self.name]  # Queue für Aufgaben
         self.connections = connections  # Ein Dictionary von Verbindungen zu anderen Agenten
         self.constraints = constraints  # Dict von Constraints zu anderen Agenten
-        self.all_domains = sorted(all_domains)  # Liste aller möglicher eigener Domains
+        self.all_domains = self.unit_testing(occupation, all_domains)  # Liste aller möglicher eigener Domains
         self.nogood_dict = dict()  # Dictionary mit No-goods Key: Constraint-String Value: Liste von no-good Domains
         self.agent_view = dict()  # Dictionary mit den Domains, die der Agent betrachtet
-        self.running = True
-        self.n = n
+        self.occupation = occupation  # Dictionary mit den belegten Domains des Agenten
+        self.running = True  # Flag, um den Agenten zu stoppen
+        self.n = n  # Anzahl der Agenten
 
         self.message_handlers = {
             "check": self.check,
@@ -37,14 +40,49 @@ class AttributAgent(Process):
             "startagent": self.startagent
         }
 
-    def last_sender(self, constraintDict):
-        # Gibt den Namen des vorherigen Agenten zurück
-        return list(constraintDict.keys())[-1]
 
-    def remove_last(self, identifier):
-        # Entfernt den letzten Agenten aus dem Constraint-Identifier
-        return identifier[:identifier.rfind(";")]
-    
+    def unit_testing(self, occupation, domains):
+        # Testet die Constraints mit den gegebenen Domains und eliminiert invalide Domains
+        set_domain = set()
+        for key in occupation:
+            if occupation[key] is not None:
+                set_domain.add(occupation[key])
+
+        list_domain = []
+        for domain in domains:
+            if domain not in set_domain:
+                list_domain.append(domain)
+        if len(list_domain) == 0:
+            print("No solution found.")
+            self.kill_all()
+        return list_domain
+
+    def occupation_dict(self, occupationDict):
+        occupated_dict = self.occupation
+        for key in occupated_dict:
+            if key in occupationDict:
+                occupated_dict[key] = occupationDict[key]
+        return occupated_dict
+
+    def occupation_hash(self, occupationDict):
+        # Gibt den Hash-Wert der Besetzung des Agenten zurück
+        occ_dict = self.occupation_dict(occupationDict)
+        hash_str = json.dumps(occ_dict)
+        print(f"Hash: {hash(hash_str)}")
+        return occ_dict, hash(hash_str)
+
+    def last_sender(self, sender_list):
+        # Gibt den Namen des vorherigen Agenten zurück
+        if isinstance(sender_list, list):
+            return sender_list[-1]
+        else:
+            print ("Error: last_sender")
+
+    def kill_all(self):
+        # Beendet alle Agenten
+        for connection in self.connections:
+            self.send_message(self.connections[connection], "kill", {"kill": ""})
+
     def log(self, message):
         # Sendet Log-Nachrichten an die Log-Queue
         print(message)
@@ -64,64 +102,96 @@ class AttributAgent(Process):
             print(f"Received unknown message type: {header} with message: {message}")
             #self.log(f"Received unknown message type: {header} with message: {message}")
 
-    def nogood(self, constraintDict):
+    def nogood(self, communicationDict):
         # Aktualisiert das Dictionary der No-goods und probiert die Constraints mit einer neuen Domain
         # zu erfüllen ansonsten wird eine "nogood"-Nachricht an den vorherigen Agenten gesendet
         #self.log(f"Received nogood from {constraintDict['identifier']}")
-        old_identifier = self.remove_last(constraintDict["identifier"])
-        if old_identifier == "start":
-            return
-        if old_identifier not in self.nogood_dict:
-            self.nogood_dict[old_identifier] = []
-        self.nogood_dict[old_identifier].append(constraintDict[self.name])
-        if self.agent_view.__contains__(constraintDict[self.name]):
-            self.agent_view[old_identifier].remove(constraintDict[self.name])
-        if len(self.agent_view[old_identifier]) == 0:
-            constraintDict["identifier"] = old_identifier
-            constraintDict.pop(self.name, None)
-            self.send_message(self.connections[self.last_sender(constraintDict)],
-                              "nogood", constraintDict)
-        else:
-            constraintDict["identifier"] = (old_identifier +
-                                            f";{self.name}={self.agent_view[old_identifier][0]}")
-            constraintDict[self.name] = self.agent_view[old_identifier][0]
-            for constraint in self.constraints:
-                if constraint not in constraintDict:
-                    self.send_message(self.connections[constraint], "check", constraintDict)
+        print(f"{self.name} received nogood from {communicationDict['sender'][-1]}"
+              f" with Hash: {communicationDict['identifier'][-1]}")
+        old_identifier = communicationDict["identifier"][-1]
 
-    def check(self, constraintDict):
+        # if old_identifier == "start":
+        #     # TODO Was passiert wenn erster Agent ein nogood erhält
+        #     return
+
+
+        print(f"{self.name} nogood_dict: {self.nogood_dict[old_identifier]} and"
+              f" agent_view: {self.agent_view[old_identifier]}")
+
+        if communicationDict["occupation"][self.name] in self.agent_view[old_identifier]:
+            self.agent_view[old_identifier].remove(communicationDict["occupation"][self.name])
+
+        if communicationDict["occupation"][self.name] not in self.nogood_dict[old_identifier]:
+            self.nogood_dict[old_identifier].add(communicationDict["occupation"][self.name])
+
+        if len(self.agent_view[old_identifier]) == 0:
+            communicationDict["identifier"].pop()
+            communicationDict["sender"].pop()
+            communicationDict["occupation"][self.name] = None
+            self.send_message(self.connections[self.last_sender(communicationDict["sender"])],
+                              "nogood", communicationDict)
+        else:
+            a = 0
+            constraintDict = self.occupation_dict(communicationDict["occupation"])
+            communicationDict["occupation"][self.name] = self.agent_view[old_identifier].pop()
+            for key in self.occupation:
+                if communicationDict["occupation"][key] is None:
+                    self.send_message(self.connections[key], "check", communicationDict)
+                    a += 1
+                    return
+
+    def check(self, communicationDict):
         # Überprüft, ob es eine Möglichkeit gibt die Constraints zu erfüllen mit
         # den aktuellen Domains-String und fragt die anderen nicht im Domain-String
         # enthaltenen Agenten, ob die Auswahl gültig ist
-        identifier = constraintDict["identifier"]
-        if identifier not in self.agent_view:
-            self.agent_view[identifier] = []
-            self.solve(constraintDict)
-            if len(self.agent_view[identifier]) == 0:
-                constraintDict.pop(self.name, None)
-                l_sender = self.last_sender(constraintDict)
+        occ_dict = dict()
+        print(f"{self.name} is checking"
+              f" with Hash: {communicationDict['identifier'][-1]}")
+        if communicationDict["identifier"][-1] == "start":
+            hash_identifier = hash("start")
+            occ_dict = self.occupation
+        else:
+            occ_dict, hash_identifier = self.occupation_hash(communicationDict["occupation"])
+
+        if hash_identifier not in self.agent_view and hash_identifier not in self.nogood_dict:
+            solve_list = self.solve(communicationDict["occupation"])
+
+            if len(solve_list) == 0:
+                l_sender = self.last_sender(communicationDict["sender"])
                 if l_sender == "start":
                     print("No solution found.")
-                    for connection in self.connections:
-                        self.send_message(self.connections[connection], "kill", {"kill": ""})
+                    self.kill_all()
                     return
-                self.send_message(self.connections[l_sender], "nogood", constraintDict)
+                self.send_message(self.connections[l_sender], "nogood", communicationDict)
                 return
-        if len(self.agent_view[identifier]) != 0:
-            constraintDict["identifier"] = (identifier + f";{self.name}={self.agent_view[identifier][0]}")
-            constraintDict[self.name] = self.agent_view[identifier][0]
-        if len(constraintDict) > 14:
-            print(f"Checking {constraintDict}")
+            else:
+                self.agent_view[hash_identifier] = set(solve_list)
+                self.nogood_dict[hash_identifier] = set()
 
         i = 0
-        for constraint in self.constraints:
-            if constraint not in constraintDict:
-                self.send_message(self.connections[constraint], "check", constraintDict)
-                i += 1
-        if i == 0 and len(constraintDict) == self.n:
-            print(f"Found solution: {constraintDict}")
-            for connection in self.connections:
-                self.send_message(self.connections[connection], "kill", {"kill": ""})
+        if len(self.agent_view[hash_identifier]) != 0:
+            communicationDict["identifier"].append(hash_identifier)
+            communicationDict["occupation"][self.name] = self.agent_view[hash_identifier].pop()
+            communicationDict["sender"].append(self.name)
+            for key in occ_dict:
+                if communicationDict["occupation"][key] is None:
+                    self.send_message(self.connections[key], "check", communicationDict)
+                    i += 1
+                    return
+
+
+        if i == 0:
+            self.send_random(communicationDict)
+
+    def send_random(self, communicationDict):
+        # Sendet eine Nachricht an einen zufälligen nicht gesetzten Agenten
+        for agent in communicationDict["occupation"]:
+            if communicationDict["occupation"][agent] is None:
+                self.send_message(self.connections[agent], "check", communicationDict)
+                return
+        print(f"Found solition: {communicationDict['occupation']}")
+        self.kill_all()
+
 
     def stop(self, message):
         # Beendet den Agenten
@@ -129,27 +199,34 @@ class AttributAgent(Process):
         #self.log("Stopping agent.")
         #self.join()
         self.running = False
-        print(f"Agent {self.agent_id} ({self.name}) stopped.")
+        # print(f"Agent {self.agent_id} ({self.name}) stopped.")
 
-    def startagent(self, message):
+    def startagent(self, communicationDict):
         # Startet den Agenten
         #self.log("Received start message.")
         #self.log("Starting agent.")
-        self.check(constraintDict={"identifier": "start"})
+        communicationDict["sender"].append("start")
+        communicationDict["identifier"].append("start")
+        self.check(communicationDict)
 
+    # Löst alle Constraints mit den gegebenen Domains und findet valide Lösungsmenge
     def solve(self, constraintDict):
-        # Löst alle Constraints mit den gegebenen Domains und findet valide Lösungsmenge
-        if constraintDict["identifier"] == "start":
-            self.agent_view["start"] = self.all_domains
-            return
+        # Startbedingung für den Agenten
+        # if len(constraintDict["identifier"]) == 1:
+        #     return self.all_domains
+
         unique_values = set()
-        for constraint_key in constraintDict:
-            if constraint_key != "identifier" and constraint_key in self.constraints:
-                unique_values.add(constraintDict[constraint_key])
+        # Findet alle belegten Domains durch Constraints
+        for key in self.occupation:
+            if key in constraintDict and constraintDict[key] is not None:
+                unique_values.add(constraintDict[key])
+
+        # Findet alle möglichen Domains, die noch nicht belegt sind
+        list_domains = []
         for domain in self.all_domains:
             if domain not in unique_values:
-                self.agent_view[constraintDict["identifier"]].append(domain)
-        #self.log(f"Found domains: {self.agent_view} for {constraintDict['identifier']}")
+                list_domains.append(domain)
+        return list_domains
 
     def run(self):
         # Hauptloop des Agenten, um Nachrichten zu empfangen und verarbeiten
@@ -168,19 +245,34 @@ if __name__ == "__main__":
     log_queue = Queue()
     # TODO Initialisierung der Agenten und des Sodoku-Problems und Start-Message an den ersten Agenten senden
     with Manager() as manager:
-        n = 4
+        n = 9
         all_domain_list = list(range(1, n + 1))
         problem = Sudoku_Problem(n, n_ary=False, conflict=False)
         #print(problem.constraints)
         constraint_dict = {}
+        con_dict = {}
+        occupation_dict = {}
         for constraint, variables in problem.constraints:
             for var in variables:
                 if var not in constraint_dict:
                     constraint_dict[var] = {}
-            # Fügen Sie alle verbundenen Variablen und ihre entsprechenden Constraints hinzu
+                    con_dict[var] = {}
+                    occupation_dict[var] = None
                 for connected_var in variables:
                     if connected_var != var:
                         constraint_dict[var][connected_var] = constraint
+                        con_dict[var][connected_var] = None
+
+        # import pprint
+
+        occupation_dict = n9_test1_occupation_dict(occupation_dict)
+
+        for key in con_dict:
+            for key2 in con_dict[key]:
+                if key2 in occupation_dict and not occupation_dict[key2] is None:
+                    con_dict[key][key2] = occupation_dict[key2]
+        # pp = pprint.PrettyPrinter(indent=4)
+        # pp.pprint(occupation_dict)
         connections = dict()
         for cell in problem.cells:
             for variable in cell:
@@ -191,7 +283,7 @@ if __name__ == "__main__":
             for variable in cell:
                 agent = AttributAgent(agent_id=i, log_queue=log_queue, name=variable,
                                   connections=connections, constraints=constraint_dict[variable],
-                                  all_domains=all_domain_list, n=n*n)
+                                  all_domains=all_domain_list, n=n*n, occupation=con_dict[variable])
                 agents.append(agent)
                 i += 1
                 #agent.start()
@@ -199,7 +291,12 @@ if __name__ == "__main__":
         for agent in agents:
             agent.start()
 
-        agents[8].send_message(agents[8].task_queue, "startagent", {"start": ""})
+        # for agent in agents:
+        #     if occupation_dict[agent.name] is not None:
+        #         agent.send_message(agent.task_queue, "startagent", {"identifier": [],
+        #                                                         "sender": [], "occupation": occupation_dict})
+        agents[7].send_message(agents[0].task_queue, "startagent", {"identifier": [],
+                                                                    "sender": [], "occupation": occupation_dict})
         #for agent in agents:
         #    agent.send_message(agent.task_queue, "kill", {"kill": ""})
 

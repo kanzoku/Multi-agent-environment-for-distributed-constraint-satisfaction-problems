@@ -4,7 +4,7 @@ from loguru import logger
 from sudoku_problem import Sudoku_Problem
 import time
 import json
-from UnitTest import n9_test1_occupation_dict
+from UnitTest import n9_test2_occupation_dict
 
 
 def setup_logger():
@@ -43,6 +43,8 @@ class AttributAgent(Process):
 
     def unit_testing(self, occupation, domains):
         # Testet die Constraints mit den gegebenen Domains und eliminiert invalide Domains
+        # if occupation[self.name] is not None:
+        #     return {occupation[self.name]}
         set_domain = set()
         for key in occupation:
             if occupation[key] is not None:
@@ -55,6 +57,7 @@ class AttributAgent(Process):
         if len(list_domain) == 0:
             print("No solution found.")
             self.kill_all()
+        # print (f"{self.name} meine Domains: {list_domain}")
         return list_domain
 
     def occupation_dict(self, occupationDict):
@@ -68,7 +71,7 @@ class AttributAgent(Process):
         # Gibt den Hash-Wert der Besetzung des Agenten zurück
         occ_dict = self.occupation_dict(occupationDict)
         hash_str = json.dumps(occ_dict)
-        print(f"Hash: {hash(hash_str)}")
+        # print(f"Hash: {hash(hash_str)}")
         return occ_dict, hash(hash_str)
 
     def last_sender(self, sender_list):
@@ -106,23 +109,24 @@ class AttributAgent(Process):
         # Aktualisiert das Dictionary der No-goods und probiert die Constraints mit einer neuen Domain
         # zu erfüllen ansonsten wird eine "nogood"-Nachricht an den vorherigen Agenten gesendet
         #self.log(f"Received nogood from {constraintDict['identifier']}")
-        print(f"{self.name} received nogood from {communicationDict['sender'][-1]}"
-              f" with Hash: {communicationDict['identifier'][-1]}")
+        # print(f"{self.name} received nogood {communicationDict['occupation'][self.name]}"
+        #       f" with Hash: {communicationDict['identifier'][-1]}")
         old_identifier = communicationDict["identifier"][-1]
 
-        # if old_identifier == "start":
-        #     # TODO Was passiert wenn erster Agent ein nogood erhält
-        #     return
+        if old_identifier == "start":
+            print("No solution found.")
+            self.kill_all()
+            return
 
-
-        print(f"{self.name} nogood_dict: {self.nogood_dict[old_identifier]} and"
-              f" agent_view: {self.agent_view[old_identifier]}")
 
         if communicationDict["occupation"][self.name] in self.agent_view[old_identifier]:
-            self.agent_view[old_identifier].remove(communicationDict["occupation"][self.name])
+            self.agent_view[old_identifier].discard(communicationDict["occupation"][self.name])
 
         if communicationDict["occupation"][self.name] not in self.nogood_dict[old_identifier]:
             self.nogood_dict[old_identifier].add(communicationDict["occupation"][self.name])
+
+        # print(f"{self.name} nogood_dict: {self.nogood_dict[old_identifier]} and"
+        #       f" agent_view: {self.agent_view[old_identifier]}")
 
         if len(self.agent_view[old_identifier]) == 0:
             communicationDict["identifier"].pop()
@@ -132,12 +136,13 @@ class AttributAgent(Process):
                               "nogood", communicationDict)
         else:
             a = 0
-            constraintDict = self.occupation_dict(communicationDict["occupation"])
             communicationDict["occupation"][self.name] = self.agent_view[old_identifier].pop()
             for key in self.occupation:
                 if communicationDict["occupation"][key] is None:
                     self.send_message(self.connections[key], "check", communicationDict)
                     a += 1
+                    # print(f"{self.name} is sending other check to {key} and"
+                    #       f" Domain: {communicationDict['occupation'][self.name]}")
                     return
 
     def check(self, communicationDict):
@@ -145,8 +150,8 @@ class AttributAgent(Process):
         # den aktuellen Domains-String und fragt die anderen nicht im Domain-String
         # enthaltenen Agenten, ob die Auswahl gültig ist
         occ_dict = dict()
-        print(f"{self.name} is checking"
-              f" with Hash: {communicationDict['identifier'][-1]}")
+        # print(f"{self.name} is checking"
+        #       f" from Sender: {communicationDict['sender'][-1]}")
         if communicationDict["identifier"][-1] == "start":
             hash_identifier = hash("start")
             occ_dict = self.occupation
@@ -155,7 +160,7 @@ class AttributAgent(Process):
 
         if hash_identifier not in self.agent_view and hash_identifier not in self.nogood_dict:
             solve_list = self.solve(communicationDict["occupation"])
-
+            # print(f"{self.name} is solving with Hash: {hash_identifier} and List: {solve_list}")
             if len(solve_list) == 0:
                 l_sender = self.last_sender(communicationDict["sender"])
                 if l_sender == "start":
@@ -167,6 +172,10 @@ class AttributAgent(Process):
             else:
                 self.agent_view[hash_identifier] = set(solve_list)
                 self.nogood_dict[hash_identifier] = set()
+        else:
+            # print(f"{self.name} is using old Hash: {hash_identifier}")
+            self.agent_view[hash_identifier].update(self.nogood_dict[hash_identifier])
+            self.nogood_dict[hash_identifier] = set()
 
         i = 0
         if len(self.agent_view[hash_identifier]) != 0:
@@ -176,8 +185,17 @@ class AttributAgent(Process):
             for key in occ_dict:
                 if communicationDict["occupation"][key] is None:
                     self.send_message(self.connections[key], "check", communicationDict)
+                    # print(f"{self.name} is sending check to {key} with Hash: {hash_identifier} and"
+                    #       f" Domain: {communicationDict['occupation'][self.name]} and"
+                    #       f" agent_view: {self.agent_view[hash_identifier]}")
                     i += 1
                     return
+        else:
+            communicationDict["identifier"].pop()
+            communicationDict["sender"].pop()
+            communicationDict["occupation"][self.name] = None
+            self.send_message(self.connections[self.last_sender(communicationDict["sender"])], "nogood", communicationDict)
+            return
 
 
         if i == 0:
@@ -189,7 +207,7 @@ class AttributAgent(Process):
             if communicationDict["occupation"][agent] is None:
                 self.send_message(self.connections[agent], "check", communicationDict)
                 return
-        print(f"Found solition: {communicationDict['occupation']}")
+        print(f"{communicationDict['occupation']}")
         self.kill_all()
 
 
@@ -220,7 +238,6 @@ class AttributAgent(Process):
         for key in self.occupation:
             if key in constraintDict and constraintDict[key] is not None:
                 unique_values.add(constraintDict[key])
-
         # Findet alle möglichen Domains, die noch nicht belegt sind
         list_domains = []
         for domain in self.all_domains:
@@ -265,14 +282,14 @@ if __name__ == "__main__":
 
         # import pprint
 
-        occupation_dict = n9_test1_occupation_dict(occupation_dict)
+        occupation_dict = n9_test2_occupation_dict(occupation_dict)
 
         for key in con_dict:
             for key2 in con_dict[key]:
                 if key2 in occupation_dict and not occupation_dict[key2] is None:
                     con_dict[key][key2] = occupation_dict[key2]
         # pp = pprint.PrettyPrinter(indent=4)
-        # pp.pprint(occupation_dict)
+        # pp.pprint(con_dict)
         connections = dict()
         for cell in problem.cells:
             for variable in cell:
@@ -297,6 +314,7 @@ if __name__ == "__main__":
         #                                                         "sender": [], "occupation": occupation_dict})
         agents[7].send_message(agents[0].task_queue, "startagent", {"identifier": [],
                                                                     "sender": [], "occupation": occupation_dict})
+        print(f"Start {time.time()}")
         #for agent in agents:
         #    agent.send_message(agent.task_queue, "kill", {"kill": ""})
 

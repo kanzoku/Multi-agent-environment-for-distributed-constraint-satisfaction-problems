@@ -229,21 +229,25 @@ class AttributAgent(Process):
 
     # Löst alle Constraints mit den gegebenen Domains und findet valide Lösungsmenge
     def solve(self, constraintDict):
-        # Startbedingung für den Agenten
-        # if len(constraintDict["identifier"]) == 1:
-        #     return self.all_domains
-
-        unique_values = set()
-        # Findet alle belegten Domains durch Constraints
-        for key in self.occupation:
-            if key in constraintDict and constraintDict[key] is not None:
-                unique_values.add(constraintDict[key])
-        # Findet alle möglichen Domains, die noch nicht belegt sind
         list_domains = []
         for domain in self.all_domains:
-            if domain not in unique_values:
+            if self.is_valid(domain, self.name, constraintDict):
                 list_domains.append(domain)
         return list_domains
+
+    def is_valid(self, value, var, assigned_values):
+        local_env = assigned_values.copy()
+        local_env[var] = value
+        for vari, func_constraint in self.constraints.items():
+            modified_constraint = func_constraint
+            for key in local_env:
+                modified_constraint = modified_constraint.replace(key, str(local_env[key]))
+            try:
+                if not eval(modified_constraint):
+                    return False
+            except NameError:
+                continue
+        return True
 
     def run(self):
         # Hauptloop des Agenten, um Nachrichten zu empfangen und verarbeiten
@@ -303,8 +307,8 @@ if __name__ == "__main__":
                                   all_domains=all_domain_list, n=n*n, occupation=con_dict[variable])
                 agents.append(agent)
                 i += 1
-                #agent.start()
 
+        # pp.pprint(constraint_dict)
         for agent in agents:
             agent.start()
 
@@ -314,10 +318,10 @@ if __name__ == "__main__":
         #                                                         "sender": [], "occupation": occupation_dict})
         agents[7].send_message(agents[0].task_queue, "startagent", {"identifier": [],
                                                                     "sender": [], "occupation": occupation_dict})
-        print(f"Start {time.time()}")
-        #for agent in agents:
-        #    agent.send_message(agent.task_queue, "kill", {"kill": ""})
-
+        # print(f"Start {time.time()}")
+        # #for agent in agents:
+        # #    agent.send_message(agent.task_queue, "kill", {"kill": ""})
+        #
         log_queue.close()
         for agent in agents:
             agent.join()

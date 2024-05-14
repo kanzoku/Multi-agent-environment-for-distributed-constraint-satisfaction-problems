@@ -1,133 +1,104 @@
-def n9_test1_occupation_dict(occupation_dict):
-        occupation_dict["a5"] = 6
-        occupation_dict["a7"] = 1
-        occupation_dict["a8"] = 4
-        occupation_dict["b2"] = 5
-        occupation_dict["b3"] = 4
-        occupation_dict["b4"] = 9
-        occupation_dict["b5"] = 7
-        occupation_dict["b7"] = 6
-        occupation_dict["b8"] = 8
-        occupation_dict["b9"] = 2
-        occupation_dict["c1"] = 2
-        occupation_dict["c2"] = 6
-        occupation_dict["c5"] = 1
-        occupation_dict["c7"] = 7
-        occupation_dict["c9"] = 5
-        occupation_dict["d2"] = 9
-        occupation_dict["d9"] = 4
-        occupation_dict["e1"] = 8
-        occupation_dict["e2"] = 1
-        occupation_dict["e3"] = 5
-        occupation_dict["e5"] = 9
-        occupation_dict["e6"] = 2
-        occupation_dict["e7"] = 3
-        occupation_dict["e8"] = 7
-        occupation_dict["e9"] = 6
-        occupation_dict["f2"] = 7
-        occupation_dict["f5"] = 5
-        occupation_dict["g3"] = 8
-        occupation_dict["g4"] = 6
-        occupation_dict["g5"] = 2
-        occupation_dict["g6"] = 1
-        occupation_dict["g7"] = 5
-        occupation_dict["g8"] = 3
-        occupation_dict["h1"] = 6
-        occupation_dict["h2"] = 3
-        occupation_dict["h3"] = 7
-        occupation_dict["h7"] = 9
-        occupation_dict["i3"] = 1
-        return occupation_dict
+import pandas as pd
+import random
 
-def n9_test2_occupation_dict(occupation_dict):
-        occupation_dict["a1"] = None
-        occupation_dict["a2"] = None
-        occupation_dict["a3"] = 3
-        occupation_dict["a4"] = None
-        occupation_dict["a5"] = None
-        occupation_dict["a6"] = 4
-        occupation_dict["a7"] = None
-        occupation_dict["a8"] = 5
-        occupation_dict["a9"] = None
-        occupation_dict["b1"] = None
-        occupation_dict["b2"] = None
-        occupation_dict["b3"] = None
-        occupation_dict["b4"] = None
-        occupation_dict["b5"] = None
-        occupation_dict["b6"] = 2
-        occupation_dict["b7"] = 3
-        occupation_dict["b8"] = None
-        occupation_dict["b9"] = 7
-        occupation_dict["c1"] = None
-        occupation_dict["c2"] = None
-        occupation_dict["c3"] = None
-        occupation_dict["c4"] = None
-        occupation_dict["c5"] = 5
-        occupation_dict["c6"] = None
-        occupation_dict["c7"] = 1
-        occupation_dict["c8"] = 6
-        occupation_dict["c9"] = None
-        occupation_dict["d1"] = None
-        occupation_dict["d2"] = None
-        occupation_dict["d3"] = 2
-        occupation_dict["d4"] = None
-        occupation_dict["d5"] = 4
-        occupation_dict["d6"] = 6
-        occupation_dict["d7"] = None
-        occupation_dict["d8"] = 7
-        occupation_dict["d9"] = None
-        occupation_dict["e1"] = None
-        occupation_dict["e2"] = 8
-        occupation_dict["e3"] = None
-        occupation_dict["e4"] = 2
-        occupation_dict["e5"] = None
-        occupation_dict["e6"] = None
-        occupation_dict["e7"] = None
-        occupation_dict["e8"] = None
-        occupation_dict["e9"] = None
-        occupation_dict["f1"] = None
-        occupation_dict["f2"] = None
-        occupation_dict["f3"] = 5
-        occupation_dict["f4"] = 7
-        occupation_dict["f5"] = None
-        occupation_dict["f6"] = None
-        occupation_dict["f7"] = None
-        occupation_dict["f8"] = None
-        occupation_dict["f9"] = 8
-        occupation_dict["g1"] = None
-        occupation_dict["g2"] = None
-        occupation_dict["g3"] = 8
-        occupation_dict["g4"] = None
-        occupation_dict["g5"] = None
-        occupation_dict["g6"] = 9
-        occupation_dict["g7"] = None
-        occupation_dict["g8"] = 4
-        occupation_dict["g9"] = None
-        occupation_dict["h1"] = None
-        occupation_dict["h2"] = 5
-        occupation_dict["h3"] = None
-        occupation_dict["h4"] = None
-        occupation_dict["h5"] = 3
-        occupation_dict["h6"] = None
-        occupation_dict["h7"] = None
-        occupation_dict["h8"] = 2
-        occupation_dict["h9"] = None
-        occupation_dict["i1"] = 4
-        occupation_dict["i2"] = None
-        occupation_dict["i3"] = None
-        occupation_dict["i4"] = None
-        occupation_dict["i5"] = None
-        occupation_dict["i6"] = None
-        occupation_dict["i7"] = None
-        occupation_dict["i8"] = None
-        occupation_dict["i9"] = None
-        return occupation_dict
-def n4_test1_occupation_dict(occupation_dict):
-        occupation_dict["a1"] = 1
-        occupation_dict["a2"] = 2
-        occupation_dict["a3"] = 3
-        occupation_dict["a4"] = 4
-        occupation_dict["b2"] = 3
-        occupation_dict["d1"] = 3
-        occupation_dict["d4"] = 1
-        return occupation_dict
+def generate_full_sudoku():
+    base = 3
+    side = base * base
+    def pattern(r, c):
+        return (base * (r % base) + r // base + c) % side
+    def shuffle(s):
+        return random.sample(s, len(s))
+    rBase = range(base)
+    rows = [g * base + r for g in shuffle(rBase) for r in shuffle(rBase)]
+    cols = [g * base + c for g in shuffle(rBase) for c in shuffle(rBase)]
+    nums = shuffle(range(1, base * base + 1))
+    board = [[nums[pattern(r, c)] for c in cols] for r in rows]
+    return board
+
+def create_sudoku_puzzle(board, empties=40):
+    puzzle = [row[:] for row in board]
+    squares = len(board) * len(board)
+    for p in random.sample(range(squares), empties):
+        puzzle[p // len(board)][p % len(board)] = 0
+    return puzzle
+
+def is_valid(board, row, col, num):
+    for x in range(9):
+        if board[row][x] == num or board[x][col] == num:
+            return False
+    start_row, start_col = 3 * (row // 3), 3 * (col // 3)
+    for i in range(3):
+        for j in range(3):
+            if board[i + start_row][j + start_col] == num:
+                return False
+    return True
+
+def solve_sudoku(board):
+    def find_empty_location(board):
+        for i in range(9):
+            for j in range(9):
+                if board[i][j] == 0:
+                    return (i, j)
+        return None
+
+    empty_spot = find_empty_location(board)
+    if not empty_spot:
+        return True
+    row, col = empty_spot
+    for num in range(1, 10):
+        if is_valid(board, row, col, num):
+            board[row][col] = num
+            if solve_sudoku(board):
+                return True
+            board[row][col] = 0
+    return False
+
+def generate_and_save_sudokus(file_name='sudoku_datenbank.xlsx', sheet_name='9x9', num_sudokus=500):
+    sudoku_list = []
+    for _ in range(num_sudokus):
+        full_board = generate_full_sudoku()
+        puzzle_board = create_sudoku_puzzle(full_board, empties=40)
+        while not solve_sudoku([row[:] for row in puzzle_board]):
+            full_board = generate_full_sudoku()
+            puzzle_board = create_sudoku_puzzle(full_board, empties=40)
+        flat_board = [num for row in puzzle_board for num in row]
+        sudoku_list.append(flat_board)
+
+    columns = [f'{chr(97 + (i // 26)) + chr(97 + (i % 26)) if i >= 26 else chr(97 + i)}' for i in range(81)]
+
+    df = pd.DataFrame(sudoku_list, columns=columns)
+    with pd.ExcelWriter(file_name, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, startrow=1, sheet_name=sheet_name)
+
+    print(f"Die Sudokus wurden erfolgreich in '{file_name}' im Worksheet '{sheet_name}' gespeichert.")
+
+
+def read_sudoku_to_dict(file_name, sheet_name, row_number):
+    # Lade die Excel-Datei und das spezifische Worksheet
+    df = pd.read_excel(file_name, sheet_name=sheet_name)
+
+    # Zugriff auf die spezifische Zeile (Index ist row_number - 1)
+    sudoku_row = df.iloc[row_number - 1].tolist()
+
+    # Spaltennamen für das Sudoku-Board
+    column_labels = [f"{chr(97 + i)}{j + 1}" for i in range(9) for j in range(9)]
+
+    # Initialisiere das Dictionary
+    occupation_dict = {label: None for label in column_labels}
+
+    # Fülle das Dictionary mit den Werten aus der Excel-Zeile
+    for label, value in zip(column_labels, sudoku_row):
+        if value == 0:
+            occupation_dict[label] = None
+        else:
+            occupation_dict[label] = value
+
+    return occupation_dict
+
+def read_sudoku(number = 2):
+    row_number = number +1
+    file_name = 'sudoku_datenbank.xlsx'
+    sheet_name = '9x9'
+    occupation_dict = read_sudoku_to_dict(file_name, sheet_name, row_number)
+    # print(occupation_dict)
+    return occupation_dict

@@ -71,11 +71,6 @@ class HierarchicalAttributAgent(Process):
         for connection in self.connections:
             self.send_message(self.connections[connection], "kill", {"kill": ""})
 
-    def log(self, message):
-        # Sendet Log-Nachrichten an die Log-Queue
-        print(message)
-        #self.log_queue.put(f"Agent {self.agent_id} ({self.name}) - {message}")
-
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
         message_data = json.dumps({"header": header, "message": message})

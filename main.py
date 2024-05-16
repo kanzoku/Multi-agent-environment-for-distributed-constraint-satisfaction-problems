@@ -2,8 +2,6 @@ import multiprocessing
 from multiprocessing import Process, Queue, Manager
 from loguru import logger
 from sudoku_problem import Sudoku_Problem
-import time
-import json
 from UnitTest import read_sudoku
 from hierarchicalAgents import HierarchicalAttributAgent
 

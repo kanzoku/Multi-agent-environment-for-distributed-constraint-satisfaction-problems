@@ -23,6 +23,7 @@ class DecentralizedAttributAgent(Process):
         self.csp_number = 0  # Kennung des gerade bearbeitenden CSP
         self.confirmed = False  # Flag, ob der Agent bestätigt hat
 
+        # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
             "must_be": self.handle_must_be,
             "check": self.handle_check,
@@ -33,12 +34,14 @@ class DecentralizedAttributAgent(Process):
             "startagent": self.handle_startagent
         }
 
+    # Erstellt ein Dictionary für die Vorbereitung des Agenten-Views
     def prepare_agent_view(self):
         prepared_dict = dict()
         for connection in self.constraints.keys():
             prepared_dict[connection] = None
         return prepared_dict
 
+    # Schließt die Domänen aus, die nicht mehr infrage kommen
     def domain_propagation(self):
         self.all_domains = [
             domain for domain in self.all_domains
@@ -48,6 +51,7 @@ class DecentralizedAttributAgent(Process):
             )
         ]
 
+    # Überprüft, ob der Agent einen eindeutigen Wert in der Domäne hat
     def must_be_check(self):
         if len(self.all_domains) != 1:
             return False
@@ -62,6 +66,7 @@ class DecentralizedAttributAgent(Process):
         return True
 
 
+    # Solver zur Überprüfung der Constraints
     def is_valid(self, value, var, assigned_value):
         local_env = {var: assigned_value, self.name: value}
         modified_constraint = self.constraints[var]
@@ -72,6 +77,7 @@ class DecentralizedAttributAgent(Process):
         except (SyntaxError, NameError, TypeError):
             return False
 
+    # Wählt einen Wert aus der Domäne aus, der noch nicht in der No-good-Liste oder im Agenten-View ist
     def select_value(self):
         nogood_set = self.nogood_set
         agent_view_keys = self.agent_view_dict.keys()
@@ -93,11 +99,13 @@ class DecentralizedAttributAgent(Process):
         self.selected_value = first_value
         return self.selected_value
 
+    # Sendet Nachrichten an andere Agenten
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
         message_data = json.dumps({"header": header, "message": message})
         recipient_queue.put((self.name, self.csp_number, message_data))
 
+    # Empfängt Nachrichten von anderen Agenten und bearbeitet sie weiter
     def receive_message(self, header, message):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
         handler = self.message_handlers.get(header)
@@ -106,6 +114,7 @@ class DecentralizedAttributAgent(Process):
         else:
             print(f"Received unknown message type: {header} with message: {message}")
 
+    # Behandelt Must-be-Nachrichten, um eindeutige Werte zu confirmen und die Domäne-Menge zu aktualisieren
     def handle_must_be(self, message):
         # Füge die empfangene Domain zur Liste der belegten Domains hinzu
         self.occupation[message["sender"]] = message["value"]
@@ -113,9 +122,11 @@ class DecentralizedAttributAgent(Process):
         if not self.must_be_check():
             self.check()
 
+    # Behandelt Stop-Nachrichten, um den Agenten zu stoppen
     def handle_stop(self, message):
         self.running = False
 
+    # Behandelt Startagent-Nachrichten, um mehrere Durchläufe zu ermöglichen ohne die Agenten neu zu starten
     def handle_startagent(self, message):
         shuffled_domains = message["domains"]
         random.shuffle(shuffled_domains)
@@ -127,6 +138,8 @@ class DecentralizedAttributAgent(Process):
         if not self.must_be_check():
             self.check()
 
+    # Behandelt Check-Nachrichten, dabei wird überprüft, ob der Wert des sendenden Agenten gültig ist,
+    # ansonsten werden Maßnahmen ergriffen, um einen gültigen Wert zu finden
     def handle_check(self, message):
         if self.is_valid(self.selected_value, message["sender"], message["value"]):
             self.send_message(self.connections[message["sender"]], "good",
@@ -140,6 +153,8 @@ class DecentralizedAttributAgent(Process):
                 self.nogood_set.add(self.selected_value)
                 self.check()
 
+    # Behandelt Good-Nachrichten, dabei wird der boolean Wert für den Agenten in der Domäne auf True gesetzt und
+    # sollten alle True sein wird die Domäne confirmed
     def handle_good(self, message):
         if self.agent_view_dict.__contains__(message["value"]):
             self.agent_view_dict[message["value"]][message["sender"]] = True
@@ -148,14 +163,19 @@ class DecentralizedAttributAgent(Process):
                                   {"sender": self.name, "value": message["value"]})
                 self.confirmed = True
 
+    # Behandelt No-good-Nachrichten, dabei wird der Wert aus der betrachteten Domains entfernt
+    # und in die No-good-Liste eingefügt
     def handle_nogood(self, message):
         if self.agent_view_dict.__contains__(message["value"]):
             self.agent_view_dict.pop(message["value"], None)
             self.nogood_set.add(message["value"])
             self.check()
 
+    # Behandelt Backtrack-Nachrichten, dabei werden die Domains des Agenten mit den Domains des sendenden Agenten
+    # verglichen und sollte der selektierte Wert in der Schnittmenge liegen, wird der Agent zurückgesetzt und ein
+    # neuer Check wird durchgeführt
     def handle_backtrack(self, message):
-        if self.agent_id < message["id"]:
+        if self.agent_id < message["id"] and self.all_domains.length > 1:
             set1 = set(self.all_domains)
             set2 = set(message["value_list"])
             intersection = set1 & set2
@@ -168,7 +188,7 @@ class DecentralizedAttributAgent(Process):
                 self.nogood_set.add(self.selected_value)
                 self.check()
 
-    # Sendet
+    # Sendet Nachrichten an andere Agenten um einen Backtrack zu starten
     def backtrack(self):
         for connection in self.constraints.keys():
             self.send_message(self.connections[connection], "backtrack",

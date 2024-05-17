@@ -38,17 +38,19 @@ class DecentralizedAttributAgent(Process):
             )
         ]
 
-
     def must_be_check(self):
-        if len(self.all_domains) == 1:
-            self.selected_value = self.all_domains[0]
-            self.send_message(self.coordinator_queue, "must_be",
-                              {"sender": self.name, "value": self.selected_value})
-            for connection in self.constraints.keys():
-                self.send_message(self.connections[connection], "must_be",
-                                  {"sender": self.name, "value": self.selected_value})
-            return True
-        return False
+        if len(self.all_domains) != 1:
+            return False
+
+        self.selected_value = self.all_domains[0]
+        message = {"sender": self.name, "value": self.selected_value}
+        self.send_message(self.coordinator_queue, "must_be", message)
+
+        for connection in self.constraints.keys():
+            self.send_message(self.connections[connection], "must_be", message)
+
+        return True
+
 
     def is_valid(self, value, var, assigned_value):
         local_env = {var: assigned_value, self.name: value}

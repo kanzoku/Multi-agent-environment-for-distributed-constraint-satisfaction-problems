@@ -160,21 +160,28 @@ class DecentralizedAttributAgent(Process):
             set2 = set(message["value_list"])
             intersection = set1 & set2
             if self.selected_value in intersection:
+                if self.confirmed:
+                    self.confirmed = False
+                    self.send_message(self.coordinator_queue, "unconfirm",
+                                      {"sender": self.name, "value": self.selected_value})
                 self.agent_view_dict.pop(self.selected_value, None)
                 self.nogood_set.add(self.selected_value)
                 self.check()
 
+    # Sendet
     def backtrack(self):
         for connection in self.constraints.keys():
             self.send_message(self.connections[connection], "backtrack",
                               {"sender": self.name, "id": self.agent_id, "value_list": self.all_domains})
 
+    # Überprüft, ob der Agent einen Wert auswählen kann
     def check(self):
         self.select_value()
         for connection in self.constraints.keys():
             self.send_message(self.connections[connection], "check",
                               {"sender": self.name, "id": self.agent_id, "value": self.selected_value})
 
+    # Hauptloop des Agenten
     def run(self):
         while self.running:
             if not self.task_queue.empty():

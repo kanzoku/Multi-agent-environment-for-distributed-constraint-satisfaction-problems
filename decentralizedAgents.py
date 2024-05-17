@@ -13,7 +13,9 @@ class DecentralizedAttributAgent(Process):
         self.constraints = constraints  # Dict von Constraints zu anderen Agenten
         self.all_domains = None  # Liste aller möglicher eigener Domains
         self.nogood_list = list()  # Liste mit No-goods des Agenten
-        self.agent_view = list()  # Liste mit den Domains, die der Agent betrachtet
+        self.agent_view_dict = dict()  # Dictionary mit den Domains, die der Agent betrachtet
+        self.agent_view_preparation_dict = self.prepare_agent_view()  # vorgefertigtes Dictionary für
+        # Antworten auf die betrachtete Domain
         self.occupation = None  # Dictionary mit den belegten Domains des Agenten
         self.running = True  # Flag, um den Agenten zu stoppen
         self.selected_value = None  # Ausgewählter Wert des Agenten
@@ -28,6 +30,12 @@ class DecentralizedAttributAgent(Process):
             "kill": self.handle_stop,
             "startagent": self.handle_startagent
         }
+
+    def prepare_agent_view(self):
+        prepared_dict = dict()
+        for connection in self.constraints.keys():
+            prepared_dict[connection] = None
+        return prepared_dict
 
     def domain_propagation(self):
         self.all_domains = [
@@ -64,20 +72,20 @@ class DecentralizedAttributAgent(Process):
 
     def select_value(self):
         nogood_set = set(self.nogood_list)
-        agent_view_set = set(self.agent_view)
+        agent_view_keys = self.agent_view_dict.keys()
 
         for value in self.all_domains:
-            if value not in nogood_set and value not in agent_view_set:
-                self.agent_view.append(value)
+            if value not in nogood_set and value not in agent_view_keys:
+                self.agent_view_dict[value] = self.agent_view_preparation_dict
                 self.selected_value = value
                 return value
 
         self.nogood_list.clear()
-        self.agent_view.clear()
+        self.agent_view_dict.clear()
         self.list_run += 1
 
         first_value = self.all_domains[0]
-        self.agent_view.append(first_value)
+        self.agent_view_dict[first_value] = self.agent_view_preparation_dict
         self.selected_value = first_value
         return self.selected_value
 

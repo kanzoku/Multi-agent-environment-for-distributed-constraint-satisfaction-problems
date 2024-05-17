@@ -30,12 +30,13 @@ class DecentralizedAttributAgent(Process):
         }
 
     def domain_propagation(self):
-        list_domains = []
-        for domain in self.all_domains:
-            if self.is_valid(domain, self.name, self.occupation):
-                list_domains.append(domain)
-        self.all_domains = list_domains
-
+        self.all_domains = [
+            domain for domain in self.all_domains
+            if all(
+                self.occupation[connection] is None or self.is_valid(domain, connection, self.occupation[connection])
+                for connection in self.constraints.keys()
+            )
+        ]
 
 
     def must_be_check(self):
@@ -114,8 +115,10 @@ class DecentralizedAttributAgent(Process):
 
     def handle_check(self, message):
         if self.is_valid(self.selected_value, message["sender"], message["value"]):
-            self.send_message(self.coordinator_queue, "good",
+            self.send_message(self.connections[message["sender"]], "good",
                               {"sender": self.name, "id": self.agent_id, "value": self.selected_value})
+        else:
+            if
 
 
     def check(self):

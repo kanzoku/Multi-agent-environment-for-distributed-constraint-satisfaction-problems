@@ -12,20 +12,22 @@ class DecentralizedAttributAgent(Process):
         self.connections = connections  # Ein Dictionary von Verbindungen zu anderen Agenten
         self.constraints = constraints  # Dict von Constraints zu anderen Agenten
         self.all_domains = None  # Liste aller möglicher eigener Domains
-        self.nogood_list = list()  # Liste mit No-goods des Agenten
+        self.nogood_set = set()  # Set mit No-goods des Agenten
         self.agent_view_dict = dict()  # Dictionary mit den Domains, die der Agent betrachtet
         self.agent_view_preparation_dict = self.prepare_agent_view()  # vorgefertigtes Dictionary für
-        # Antworten auf die betrachtete Domain
+        # Antworten auf die betrachteten Domains
         self.occupation = None  # Dictionary mit den belegten Domains des Agenten
         self.running = True  # Flag, um den Agenten zu stoppen
         self.selected_value = None  # Ausgewählter Wert des Agenten
         self.list_run = 0  # Anzahl der Durchläufe
         self.csp_number = 0  # Kennung des gerade bearbeitenden CSP
+        self.confirmed = False  # Flag, ob der Agent bestätigt hat
 
         self.message_handlers = {
             "must_be": self.handle_must_be,
             "check": self.handle_check,
             "good": self.handle_good,
+            "backtrack": self.handle_backtrack,
             "nogood": self.handle_nogood,
             "kill": self.handle_stop,
             "startagent": self.handle_startagent
@@ -71,7 +73,7 @@ class DecentralizedAttributAgent(Process):
             return False
 
     def select_value(self):
-        nogood_set = set(self.nogood_list)
+        nogood_set = self.nogood_set
         agent_view_keys = self.agent_view_dict.keys()
 
         for value in self.all_domains:
@@ -80,9 +82,11 @@ class DecentralizedAttributAgent(Process):
                 self.selected_value = value
                 return value
 
-        self.nogood_list.clear()
+        self.nogood_set.clear()
         self.agent_view_dict.clear()
         self.list_run += 1
+
+        self.backtrack()
 
         first_value = self.all_domains[0]
         self.agent_view_dict[first_value] = self.agent_view_preparation_dict
@@ -92,7 +96,7 @@ class DecentralizedAttributAgent(Process):
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
         message_data = json.dumps({"header": header, "message": message})
-        recipient_queue.put((self.name, message_data))
+        recipient_queue.put((self.name, self.csp_number, message_data))
 
     def receive_message(self, header, message):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
@@ -126,10 +130,37 @@ class DecentralizedAttributAgent(Process):
     def handle_check(self, message):
         if self.is_valid(self.selected_value, message["sender"], message["value"]):
             self.send_message(self.connections[message["sender"]], "good",
-                              {"sender": self.name, "id": self.agent_id, "value": self.selected_value})
+                              {"sender": self.name, "id": self.agent_id, "value": message["value"]})
         else:
-            if
+            if self.agent_id > message["id"]:
+                self.send_message(self.connections[message["sender"]], "nogood",
+                                  {"sender": self.name, "id": self.agent_id, "value": message["value"]})
+            else:
+                self.agent_view_dict.pop(self.selected_value, None)
+                self.nogood_set.add(self.selected_value)
+                self.check()
 
+    def handle_good(self, message):
+        if self.agent_view_dict.__contains__(message["value"]):
+            self.agent_view_dict[message["value"]][message["sender"]] = True
+            if all(self.agent_view_dict[message["value"]].values()):
+                self.send_message(self.coordinator_queue, "confirm",
+                                  {"sender": self.name, "value": message["value"]})
+                self.confirmed = True
+
+    def handle_nogood(self, message):
+        self.agent_view_dict.pop(message["value"], None)
+        self.nogood_set.add(message["value"])
+        self.check()
+
+    def handle_backtrack(self, message):
+        if self.agent_id < message["id"]:
+        return
+
+    def backtrack(self):
+        for connection in self.constraints.keys():
+            self.send_message(self.connections[connection], "backtrack",
+                              {"sender": self.name, "id": self.agent_id, "value_list": self.all_domains})
 
     def check(self):
         self.select_value()

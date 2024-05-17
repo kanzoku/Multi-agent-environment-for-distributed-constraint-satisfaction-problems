@@ -126,7 +126,7 @@ class DecentralizedAttributAgent(Process):
     def handle_stop(self, message):
         self.running = False
 
-    # Behandelt Startagent-Nachrichten, um mehrere Durchläufe zu ermöglichen ohne die Agenten neu zu starten
+    # Behandelt Startagent-Nachrichten, um mehrere Durchläufe zu ermöglichen, ohne die Agenten neu zu starten
     def handle_startagent(self, message):
         shuffled_domains = message["domains"]
         random.shuffle(shuffled_domains)
@@ -188,7 +188,7 @@ class DecentralizedAttributAgent(Process):
                 self.nogood_set.add(self.selected_value)
                 self.check()
 
-    # Sendet Nachrichten an andere Agenten um einen Backtrack zu starten
+    # Sendet Nachrichten an andere Agenten, um einen Backtrack zu starten
     def backtrack(self):
         for connection in self.constraints.keys():
             self.send_message(self.connections[connection], "backtrack",

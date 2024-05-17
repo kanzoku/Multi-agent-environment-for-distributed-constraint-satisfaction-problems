@@ -13,7 +13,23 @@ def setup_logger():
         ],
     }
     logger.configure(**config)
+class Coordinator(Process):
+    def __init__(self, log_queue, connections, *args, **kwargs):
+        super(Coordinator, self).__init__()
+        self.log_queue = log_queue
+        self.connections = connections
+        self.csp_number = 0
 
+    def run(self):
+        while True:
+            message = self.log_queue.get()
+            if message == "kill":
+                break
+            logger.info(message)
+        self.log_queue.close()
+
+    def stop(self):
+        self.log_queue.put("kill")
 
 
 

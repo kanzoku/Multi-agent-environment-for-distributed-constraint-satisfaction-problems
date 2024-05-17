@@ -149,13 +149,20 @@ class DecentralizedAttributAgent(Process):
                 self.confirmed = True
 
     def handle_nogood(self, message):
-        self.agent_view_dict.pop(message["value"], None)
-        self.nogood_set.add(message["value"])
-        self.check()
+        if self.agent_view_dict.__contains__(message["value"]):
+            self.agent_view_dict.pop(message["value"], None)
+            self.nogood_set.add(message["value"])
+            self.check()
 
     def handle_backtrack(self, message):
         if self.agent_id < message["id"]:
-        return
+            set1 = set(self.all_domains)
+            set2 = set(message["value_list"])
+            intersection = set1 & set2
+            if self.selected_value in intersection:
+                self.agent_view_dict.pop(self.selected_value, None)
+                self.nogood_set.add(self.selected_value)
+                self.check()
 
     def backtrack(self):
         for connection in self.constraints.keys():

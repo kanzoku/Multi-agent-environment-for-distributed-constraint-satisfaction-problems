@@ -1,41 +1,17 @@
 import multiprocessing
 from multiprocessing import Process, Queue, Manager
-from loguru import logger
+import time
 from sudoku_problem import Sudoku_Problem
 from UnitTest import read_sudoku
 from hierarchicalAgents import HierarchicalAttributAgent
 
 
-def setup_logger():
-    config = {
-        "handlers": [
-            {"sink": "file.log", "enqueue": True, "level": "INFO"},
-        ],
-    }
-    logger.configure(**config)
-class Coordinator(Process):
-    def __init__(self, log_queue, connections, *args, **kwargs):
-        super(Coordinator, self).__init__()
-        self.log_queue = log_queue
-        self.connections = connections
-        self.csp_number = 0
-
-    def run(self):
-        while True:
-            message = self.log_queue.get()
-            if message == "kill":
-                break
-            logger.info(message)
-        self.log_queue.close()
-
-    def stop(self):
-        self.log_queue.put("kill")
 
 
 
 if __name__ == "__main__":
+    start_time = time.perf_counter() * 1000
     multiprocessing.set_start_method('spawn')
-    setup_logger()
     log_queue = Queue()
     # TODO Initialisierung der Agenten und des Sodoku-Problems und Start-Message an den ersten Agenten senden
     with Manager() as manager:
@@ -59,7 +35,7 @@ if __name__ == "__main__":
 
         # import pprint
 
-        occupation_dict = read_sudoku(1)
+        occupation_dict = read_sudoku(3)
 
         for key in con_dict:
             for key2 in con_dict[key]:
@@ -95,6 +71,9 @@ if __name__ == "__main__":
         # #for agent in agents:
         # #    agent.send_message(agent.task_queue, "kill", {"kill": ""})
         #
+        end_time = time.perf_counter() * 1000
+        duration = end_time - start_time
+        print("Zeit für die Initialisierung:", duration, "ms")
         log_queue.close()
         for agent in agents:
             agent.join()

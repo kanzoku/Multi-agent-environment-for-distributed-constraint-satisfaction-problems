@@ -106,4 +106,4 @@ def read_sudoku(number = 2):
 
 
 if __name__ == "__main__":
-    generate_and_save_sudokus()
+    print(read_sudoku(0))

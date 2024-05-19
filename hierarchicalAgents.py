@@ -1,5 +1,6 @@
 import json
 from multiprocessing import Process
+import time
 
 
 class HierarchicalAttributAgent(Process):
@@ -18,6 +19,8 @@ class HierarchicalAttributAgent(Process):
         self.occupation = occupation  # Dictionary mit den belegten Domains des Agenten
         self.running = True  # Flag, um den Agenten zu stoppen
         self.n = n  # Anzahl der Agenten
+        self.start_time = None
+        self.end_time = None
 
         self.message_handlers = {
             "check": self.check,
@@ -194,13 +197,18 @@ class HierarchicalAttributAgent(Process):
         #self.log("Received kill message.")
         #self.log("Stopping agent.")
         #self.join()
+        self.end_time = time.perf_counter() * 1000
         self.running = False
+        if self.start_time is not None:
+            duration = self.end_time - self.start_time
+            print(f"Zeit für die Lösung: {duration} ms")
         # print(f"Agent {self.agent_id} ({self.name}) stopped.")
 
     def startagent(self, communicationDict):
         # Startet den Agenten
         #self.log("Received start message.")
         #self.log("Starting agent.")
+        self.start_time = time.perf_counter() * 1000
         communicationDict["sender"].append("start")
         communicationDict["identifier"].append("start")
         self.check(communicationDict)

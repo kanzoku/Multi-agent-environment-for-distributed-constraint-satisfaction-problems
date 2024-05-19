@@ -1,6 +1,66 @@
 import json
 from multiprocessing import Process
 import random
+from UnitTest import read_sudoku
+
+class DA_Coordinator(Process):
+    def __init__(self, coordinator_queue, connections, domains, csp_number, *args, **kwargs):
+        super(DA_Coordinator, self).__init__()
+        self.coordinator_queue = coordinator_queue
+        self.connections = connections
+        self.domains = domains
+        self.running = True
+        self.occupation = None
+        self.csp_number = 0
+        self.number_of_csp = csp_number
+
+        # Dictionary mit den Funktionen zur Behandlung von Nachrichten
+        self.message_handlers = {
+            "confirm": self.handle_confirm,
+            "unconfirm": self.handle_unconfirm,
+        }
+
+    def send_message(self, recipient_queue, header, message):
+        # Sendet Nachrichten an andere Agenten
+        message_data = json.dumps({"header": header, "message": message})
+        recipient_queue.put((self.name, self.csp_number, message_data))
+
+    def receive_message(self, header, message):
+        # Behandelt eingehende Nachrichten mithilfe des Dictionaries
+        handler = self.message_handlers.get(header)
+        if handler:
+            handler(message)  # Rufe die zugehörige Funktion auf
+        else:
+            print(f"Received unknown message type: {header} with message: {message}")
+
+    def handle_confirm(self, message):
+        self.occupation[message["sender"]] = message["value"]
+        if all([value is not None for value in self.occupation.values()]):
+            print(f"Solution found: {self.occupation}")
+            self.next_csp()
+
+    def handle_unconfirm(self, message):
+        self.occupation[message["sender"]] = None
+
+    def next_csp(self):
+        if self.csp_number < self.number_of_csp:
+            self.occupation = read_sudoku(self.csp_number)
+            for connection in self.connections.keys():
+                self.send_message(self.connections[connection], "startagent",
+                                  {"domains": self.domains[connection], "occupation": self.occupation,
+                                   "csp_number": self.csp_number})
+            self.csp_number += 1
+        else:
+            self.running = False
+
+    def run(self):
+        while self.running:
+            if not self.coordinator_queue.empty():
+                sender, csp_id, message = self.coordinator_queue.get()
+                if csp_id == self.csp_number:
+                    message = json.loads(message)
+                    self.receive_message(message["header"], message["message"])
+
 
 class DecentralizedAttributAgent(Process):
     def __init__(self, agent_id, coordinator_queue, name, connections, constraints, *args, **kwargs):

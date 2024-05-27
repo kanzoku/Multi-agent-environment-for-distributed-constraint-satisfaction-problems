@@ -189,7 +189,7 @@ class HierarchicalAttributAgent(Process):
             if communicationDict["occupation"][agent] is None:
                 self.send_message(self.connections[agent], "check", communicationDict)
                 return
-        print(f"{communicationDict['occupation']}")
+        print(communicationDict["occupation"])
         self.kill_all()
 
     def stop(self, message):

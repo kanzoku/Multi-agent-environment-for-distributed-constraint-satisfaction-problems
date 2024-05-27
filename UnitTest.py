@@ -75,35 +75,32 @@ def generate_and_save_sudokus(file_name='sudoku_datenbank.xlsx', sheet_name='9x9
 
 
 def read_sudoku_to_dict(file_name, sheet_name, row_number):
-    # Lade die Excel-Datei und das spezifische Worksheet
     df = pd.read_excel(file_name, sheet_name=sheet_name)
-
-    # Zugriff auf die spezifische Zeile (Index ist row_number - 1)
     sudoku_row = df.iloc[row_number - 1].tolist()
-
-    # Spaltennamen für das Sudoku-Board
     column_labels = [f"{chr(97 + i)}{j + 1}" for i in range(9) for j in range(9)]
-
-    # Initialisiere das Dictionary
     occupation_dict = {label: None for label in column_labels}
-
-    # Fülle das Dictionary mit den Werten aus der Excel-Zeile
     for label, value in zip(column_labels, sudoku_row):
         if value == 0:
             occupation_dict[label] = None
         else:
             occupation_dict[label] = value
-
     return occupation_dict
 
-def read_sudoku(number = 2):
-    row_number = number +1
+def read_sudoku(number, test_number = 0):
+    if test_number == 4:
+        occupation_dict = {"a1": None, "a2": None, "a3": None, "a4:": None,
+                           "b1": None, "b2": None, "b3": None, "b4": None,
+                           "c1": None, "c2": None, "c3": None, "c4": None,
+                           "d1": None, "d2": None, "d3": None, "d4": None}
+        print(occupation_dict)
+        return occupation_dict
+    row_number = number
     file_name = 'sudoku_datenbank.xlsx'
     sheet_name = '9x9'
     occupation_dict = read_sudoku_to_dict(file_name, sheet_name, row_number)
-    # print(occupation_dict)
+    print(occupation_dict)
     return occupation_dict
 
 
 if __name__ == "__main__":
-    print(read_sudoku(0))
+    print(read_sudoku(1))

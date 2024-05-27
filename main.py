@@ -14,7 +14,7 @@ def test_decentralized():
     agents = []
 
     with Manager() as manager:
-        n = 9
+        n = 4
         all_domain_list = list(range(1, n + 1))
         problem = Sudoku_Problem(n, n_ary=False, conflict=False)
 

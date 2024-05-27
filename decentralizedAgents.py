@@ -55,9 +55,9 @@ class DA_Coordinator(Process):
 
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
-            self.occupation = read_sudoku(self.csp_number+1)
-            # self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
-            #                    'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
+            # self.occupation = read_sudoku(self.csp_number+1)
+            self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
+                               'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
             for connection in self.connections.keys():
                 message = {"domains": self.domains, "occupation": self.occupation,
                            "csp_number": self.csp_number + 1}

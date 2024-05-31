@@ -1,6 +1,8 @@
 import itertools
+import time
 
 def find_combinations(equation, variable_values):
+
     keys = variable_values.keys()
     values = itertools.product(*variable_values.values())
     for combination in values:
@@ -18,13 +20,15 @@ def find_combinations(equation, variable_values):
     return {}
 
 
+start_time = time.perf_counter() * 1000
+
 variable_values = {
     'a1': [1, 2, 3, 4, 5, 6, 7, 8, 9],
     'a2': [1, 2, 3, 4, 5, 6, 7, 8, 9],
     'a3': [1, 2, 3, 4, 5, 6, 7, 8, 9],
-    'a4': [4],
-    'a5': [1],
-    'a6': [6],
+    'a4': [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    'a5': [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    'a6': [1, 2, 3, 4, 5, 6, 7, 8, 9],
     'a7': [1, 2, 3, 4, 5, 6, 7, 8, 9],
     'a8': [1, 2, 3, 4, 5, 6, 7, 8, 9],
     'a9': [1, 2, 3, 4, 5, 6, 7, 8, 9],
@@ -32,3 +36,7 @@ variable_values = {
 
 equation = "a1 * a2 * a3 * a4 * a5 * a6 * a7 * a8 * a9 == 362880"
 print(find_combinations(equation, variable_values))
+
+end_time = time.perf_counter() * 1000
+duration = end_time - start_time
+print("Zeit für 1. valide Lösung:", duration, "ms")

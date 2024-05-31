@@ -79,15 +79,14 @@ class ConstraintAgent(Process):
     def __init__(self, agent_id, coordinator_queue, name, connections, constraint, *args, **kwargs):
         super(ConstraintAgent, self).__init__()
         self.agent_id = agent_id  # ID des Agenten zur Prioritätsermittlung
-        self.name = name  # Name des Agenten
         self.coordinator_queue = coordinator_queue  # Queue für Coordinator-Nachrichten
-        self.task_queue = connections[self.name]  # Queue für Aufgaben
+        self.task_queue = connections[self.agent_id]  # Queue für Aufgaben
         self.connections = connections  # Ein Dictionary von Verbindungen zu anderen Agenten
         self.constraint = constraint  # String mit den Constraint des Agenten
         self.all_domains = None  # Dictionary
         self.all_domain_list = None
         self.possibilities = 0
-        self.nogood_dict = dict()  # Dict mit No-goods des Agenten
+        self.nogood_list = list()  # Liste mit No-goods des Agenten die eine Kombination blockieren
         self.agent_view_dict = dict()  # Dictionary mit den Domains, die der Agent betrachtet
         # self.agent_view_preparation_dict = self.prepare_agent_view()  # vorgefertigtes Dictionary für
         # Antworten auf die betrachteten Domains
@@ -110,7 +109,7 @@ class ConstraintAgent(Process):
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
         message_data = json.dumps({"header": header, "message": message})
-        recipient_queue.put((self.name, self.csp_number, message_data))
+        recipient_queue.put((self.agent_id, self.csp_number, message_data))
 
     # Empfängt Nachrichten von anderen Agenten und bearbeitet sie weiter
     def receive_message(self, header, message):
@@ -143,6 +142,10 @@ class ConstraintAgent(Process):
                 self.all_domains[key] = domain_list
 
         # TODO: Senden von Nachrichten an andere Agenten der reduzierten Domains
+        for connection in self.connections.keys():
+            if connection != self.agent_id and connection != "coordinator":
+                message = {"domains": self.all_domains}
+                self.send_message(self.connections[connection], "domain_propagation", message)
 
         self.send_message(self.coordinator_queue, "domain_propagation", {"sender": self.name})
 
@@ -151,10 +154,9 @@ class ConstraintAgent(Process):
         for key in copy_all_domains.keys():
             if occupation[key] is not None and occupation[key] in copy_all_domains[key]:
                 copy_all_domains[key] = [occupation[key]]
-            else:
-                copy_all_domains[key] = list(set(copy_all_domains[key]) - set(self.nogood_dict[key]))
-                if len(copy_all_domains[key]) == 0:
-                    return False
+
+            if len(copy_all_domains[key]) == 0:
+                return False
 
         solution = self.solver(copy_all_domains)
         if solution:
@@ -167,8 +169,12 @@ class ConstraintAgent(Process):
         keys = domain_dict.keys()
         values = itertools.product(*domain_dict.values())
         for combination in values:
+            if self.is_blocked_combination(combination, keys):
+                continue
+
             if len(set(combination)) != len(combination):
                 continue
+
             expr_copy = self.constraint
             for key, value in zip(keys, combination):
                 expr_copy = expr_copy.replace(key, str(value))
@@ -179,6 +185,12 @@ class ConstraintAgent(Process):
             except Exception as e:
                 continue
         return {}
+
+    def is_blocked_combination(self, combination, keys):
+        for blocked_condition in self.nogood_list:
+            if all(combination[keys.index(k)] == v for k, v in blocked_condition.items()):
+                return True
+        return False
 
     def handle_domain_propagation(self, message):
         possibilities = 1
@@ -193,22 +205,33 @@ class ConstraintAgent(Process):
                                                               "possibilities": self.possibilities})
 
     def handle_check(self, message):
-        if self.find_valid_solution(message):
+        if self.find_valid_solution(message["occupation"]):
             self.send_message(self.coordinator_queue, "confirm", {"sender": self.name,
                                                                   "value": self.selected_values})
         else:
-            self.send_message(self.coordinator_queue, "unconfirm", {"sender": self.name})
+            self.send_message(self.coordinator_queue, "nogood", {"sender": self.agent_id,
+                                                                 "occupation": message["occupation"],
+                                                                 "domains": self.all_domains})
 
     def handle_nogood(self, message):
         occ_dict = message["occupation"]
+        nogood_combination = dict()
         for key in self.all_domains.keys():
-            self.nogood_dict[key].append(occ_dict[key])
-            occ_dict[key] = None
-        self.check(occ_dict)
+            if key in message["domains"]:
+                nogood_combination[key] = occ_dict[key]
+                occ_dict[key] = None
+        self.nogood_list.append(nogood_combination)
+        self.check(occ_dict, message)
 
     def handle_stop(self, message):
         self.running = False
 
-    def check(self, occupation):
-        self.send_message(self.coordinator_queue, "check", {"sender": self.name,
-                                                          "occupation": occupation})
+    def check(self, occupation, message):
+        find_solution = self.find_valid_solution(occupation)
+        if find_solution:
+            self.send_message(message[""], "check", {"sender": self.agent_id,
+                                                                  "value": self.selected_values})
+        else:
+            self.send_message(self.coordinator_queue, "nogood", {"sender": self.agent_id,
+                                                                 "occupation": occupation,
+                                                                 "domains": self.all_domains})

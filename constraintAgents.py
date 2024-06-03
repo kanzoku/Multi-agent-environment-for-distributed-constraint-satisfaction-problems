@@ -18,10 +18,12 @@ class CA_Coordinator(Process):
         self.csp_number = 0
         self.number_of_csp = csp_numbers
 
+        self.status_dict = dict()
+        self.possibilities = dict()
+
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
             "confirm": self.handle_confirm,
-            "unconfirm": self.handle_unconfirm,
             "start": self.handle_start
         }
 
@@ -45,18 +47,25 @@ class CA_Coordinator(Process):
             print(f"Solution found: {self.occupation}")
             self.next_csp()
 
-    def handle_unconfirm(self, message):
-        print(f"Unconfirmed: {message['sender']} with value {self.occupation[message['sender']]}")
-        self.occupation[message["sender"]] = None
-
-
     def handle_start(self, message):
         print("Starting coordinator")
         self.next_csp()
 
+    def handle_propagation(self, message):
+        if message["sender"] in self.status_dict:
+            self.status_dict[message["sender"]] = True
+            if all(self.status_dict.values()):
+                self.all_propagations_true()
+
+    def handle_ask_possibilities(self, message):
+        if message["sender"] in self.status_dict:
+            self.possibilities[message["sender"]] = message["possibilities"]
+            if all(isinstance(value, int) for value in self.status_dict.values()):
+                self.solve()
+
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
-            self.occupation = read_sudoku(8)
+            self.occupation = read_sudoku(self.csp_number)
             # self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
             #                    'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
             for connection in self.connections.keys():
@@ -66,6 +75,56 @@ class CA_Coordinator(Process):
             self.csp_number += 1
         else:
             self.running = False
+
+    def all_propagations_true(self):
+        for connection in self.connections.keys():
+            self.send_message(self.connections[connection], "ask_possibilities", {"sender": self.name})
+        pass
+
+    def solve(self):
+        ranking, start = self.sort_and_create_sender_dict(self.possibilities)
+        if start is not None:
+            self.send_message(self.connections[start], "start_solve", {"sender": self.name,
+                                                                 "ranking": ranking, "occupation": self.occupation})
+        else:
+            print("No start found")
+
+    def sort_and_create_sender_dict(self, data, order='asc'):
+        if order == 'asc':
+            sorted_data = dict(sorted(data.items(), key=lambda item: item[1]))
+        elif order == 'desc':
+            sorted_data = dict(sorted(data.items(), key=lambda item: item[1], reverse=True))
+        elif order == 'random':
+            sorted_data = dict(data)
+            items = list(sorted_data.items())
+            random.shuffle(items)
+            sorted_data = dict(items)
+        else:
+            raise ValueError("Keine gültige Sortierreihenfolge angegeben")
+
+        # Abarbeitungsliste erstellen
+        result = {}
+        start = None
+        keys = list(sorted_data.keys())
+
+        for i, key in enumerate(keys):
+            if i == 0:
+                last_sender = 'start'
+                start = key
+            else:
+                last_sender = keys[i - 1]
+
+            if i == len(keys) - 1:
+                next_sender = 'end'
+            else:
+                next_sender = keys[i + 1]
+
+            result[key] = {
+                'lastSender': last_sender,
+                'nextSender': next_sender
+            }
+
+        return result, start
 
     def run(self):
         while self.running:
@@ -103,7 +162,8 @@ class ConstraintAgent(Process):
             "domain_propagation": self.handle_domain_propagation,
             "nogood": self.handle_nogood,
             "kill": self.handle_stop,
-            "startagent": self.handle_startagent
+            "startagent": self.handle_startagent,
+            "ask_possibilities": self.handle_ask_possibilities,
         }
 
     def send_message(self, recipient_queue, header, message):
@@ -141,7 +201,6 @@ class ConstraintAgent(Process):
             if self.all_domains[key] is None:
                 self.all_domains[key] = domain_list
 
-        # TODO: Senden von Nachrichten an andere Agenten der reduzierten Domains
         for connection in self.connections.keys():
             if connection != self.agent_id and connection != "coordinator":
                 message = {"domains": self.all_domains}
@@ -232,6 +291,7 @@ class ConstraintAgent(Process):
             self.send_message(message[""], "check", {"sender": self.agent_id,
                                                                   "value": self.selected_values})
         else:
-            self.send_message(self.coordinator_queue, "nogood", {"sender": self.agent_id,
-                                                                 "occupation": occupation,
-                                                                 "domains": self.all_domains})
+            self.backtrack()
+
+    def backtrack(self):
+        pass

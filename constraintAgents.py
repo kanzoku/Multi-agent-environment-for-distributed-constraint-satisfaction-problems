@@ -18,6 +18,7 @@ class CA_Coordinator(Process):
         self.csp_number = 0
         self.number_of_csp = csp_numbers
 
+        self.prepared_dict = self.prepare_dict()
         self.status_dict = dict()
         self.possibilities = dict()
 
@@ -26,6 +27,12 @@ class CA_Coordinator(Process):
             "confirm": self.handle_confirm,
             "start": self.handle_start
         }
+
+    def prepare_dict(self):
+        preparation_dict = dict()
+        for connection in self.connections.keys():
+            preparation_dict[connection] = None
+        return preparation_dict
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
@@ -41,8 +48,6 @@ class CA_Coordinator(Process):
             print(f"{self.name} received unknown message type: {header} with message: {message}")
 
     def handle_confirm(self, message):
-        self.occupation[message["sender"]] = message["value"]
-        print(f"Confirmed: {message['sender']} with value {message['value']}")
         if all([value is not None for value in self.occupation.values()]):
             print(f"Solution found: {self.occupation}")
             self.next_csp()
@@ -66,6 +71,8 @@ class CA_Coordinator(Process):
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
             self.occupation = read_sudoku(self.csp_number)
+            self.status_dict = self.prepared_dict
+            self.possibilities = self.prepared_dict
             # self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
             #                    'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
             for connection in self.connections.keys():
@@ -260,17 +267,25 @@ class ConstraintAgent(Process):
         self.possibilities = possibilities
 
     def handle_ask_possibilities(self, message):
-        self.send_message(self.coordinator_queue, "possible", {"sender": self.name,
+        self.send_message(self.coordinator_queue, "possible", {"sender": self.agent_id,
                                                               "possibilities": self.possibilities})
 
     def handle_check(self, message):
         if self.find_valid_solution(message["occupation"]):
-            self.send_message(self.coordinator_queue, "confirm", {"sender": self.name,
-                                                                  "value": self.selected_values})
+            message["occupation"] = self.add_solution(message["occupation"])
+            nextReceiver = message["ranking"][self.agent_id]["nextSender"]
+            if nextReceiver == "end":
+                self.send_message(self.coordinator_queue, "confirm", {"sender": self.agent_id,
+                                                                      "occupation": message["occupation"]})
+            else:
+                message["sender"] = self.agent_id
+
+                self.send_message(self.connections[nextReceiver], "check", message)
         else:
-            self.send_message(self.coordinator_queue, "nogood", {"sender": self.agent_id,
-                                                                 "occupation": message["occupation"],
-                                                                 "domains": self.all_domains})
+            lastSender = message["ranking"][self.agent_id]["lastSender"]
+            message["sender"] = self.agent_id
+            message["domains"] = self.all_domains
+            self.send_message(lastSender, "nogood", message)
 
     def handle_nogood(self, message):
         occ_dict = message["occupation"]
@@ -282,16 +297,50 @@ class ConstraintAgent(Process):
         self.nogood_list.append(nogood_combination)
         self.check(occ_dict, message)
 
+
     def handle_stop(self, message):
         self.running = False
+
+    def handle_startagent(self, message):
+        pass
+
+    def add_solution(self, occupation):
+        for key in self.selected_values.keys():
+            if occupation[key] is None:
+                occupation[key] = self.selected_values[key]
+        return occupation
+
+    def remove_last_solution(self, occupation):
+        for key in self.all_domains.keys():
+            if key not in occupation:
+                continue
+            if len(self.all_domains[key]) > 1:
+                occupation[key] = None
+            elif len(self.all_domains[key]) == 1:
+                occupation[key] = self.all_domains[key][0]
+        return occupation
 
     def check(self, occupation, message):
         find_solution = self.find_valid_solution(occupation)
         if find_solution:
-            self.send_message(message[""], "check", {"sender": self.agent_id,
-                                                                  "value": self.selected_values})
+            occupation = self.add_solution(occupation)
+            message["occupation"] = occupation
+            nextReceiver = message["ranking"][self.agent_id]["nextSender"]
+            if nextReceiver == "end":
+                self.send_message(self.coordinator_queue, "confirm", {"sender": self.agent_id,
+                                                                      "occupation": occupation})
+            else:
+                message["sender"] = self.agent_id
+                self.send_message(self.connections[nextReceiver], "check", message)
         else:
-            self.backtrack()
+            message["occupation"] = occupation
+            self.backtrack(message)
 
-    def backtrack(self):
-        pass
+    def backtrack(self, message):
+        message["occupation"] = self.remove_last_solution(message["occupation"])
+        message["domains"] = self.all_domains
+        self.nogood_list.clear()
+        self.selected_values = None
+        lastSender = message["ranking"][self.agent_id]["lastSender"]
+        message["sender"] = self.agent_id
+        self.send_message(lastSender, "nogood", message)

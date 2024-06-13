@@ -2,6 +2,7 @@ import json
 from multiprocessing import Process
 import random
 from UnitTest import read_sudoku
+import time
 
 
 class DA_Coordinator(Process):
@@ -17,6 +18,8 @@ class DA_Coordinator(Process):
         self.csp_number = 0
         self.number_of_csp = csp_numbers
 
+        self.solving_time = 0
+
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
             "confirm": self.handle_confirm,
@@ -26,7 +29,7 @@ class DA_Coordinator(Process):
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
-        message_data = json.dumps({"header": header, "message": message})
+        message_data = {"header": header, "message": message}
         recipient_queue.put((self.name, self.csp_number, message_data))
 
     def receive_message(self, header, message):
@@ -39,13 +42,18 @@ class DA_Coordinator(Process):
 
     def handle_confirm(self, message):
         self.occupation[message["sender"]] = message["value"]
-        print(f"Confirmed: {message['sender']} with value {message['value']}")
+        # print(f"Confirmed: {message['sender']} with value {message['value']}")
         if all([value is not None for value in self.occupation.values()]):
+            end_time = time.perf_counter() * 1000
+            duration = end_time - self.solving_time
+
             print(f"Solution found: {self.occupation}")
+            print("Zeit für die Lösung:", duration, "ms")
+
             self.next_csp()
 
     def handle_unconfirm(self, message):
-        print(f"Unconfirmed: {message['sender']} with value {self.occupation[message['sender']]}")
+        # print(f"Unconfirmed: {message['sender']} with value {self.occupation[message['sender']]}")
         self.occupation[message["sender"]] = None
 
 
@@ -55,13 +63,15 @@ class DA_Coordinator(Process):
 
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
-            # self.occupation = read_sudoku(self.csp_number+1)
-            self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
-                               'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
+            self.occupation = read_sudoku(self.csp_number+1)
+            self.solving_time = time.perf_counter() * 1000
+            # self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
+            #                    'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
             for connection in self.connections.keys():
                 message = {"domains": self.domains, "occupation": self.occupation,
                            "csp_number": self.csp_number + 1}
                 self.send_message(self.connections[connection], "startagent", message)
+            print(f"Starting CSP {self.csp_number + 1}")
             self.csp_number += 1
         else:
             self.running = False
@@ -69,10 +79,10 @@ class DA_Coordinator(Process):
     def run(self):
         while self.running:
             if not self.coordinator_queue.empty():
-                sender, csp_id, message = self.coordinator_queue.get()
+                sender, csp_id, message_data = self.coordinator_queue.get()
                 if csp_id == self.csp_number:
-                    message = json.loads(message)
-                    self.receive_message(message["header"], message["message"])
+                    # message = json.loads(message)
+                    self.receive_message(message_data["header"], message_data["message"])
 
 
 class DecentralizedAttributAgent(Process):
@@ -119,9 +129,13 @@ class DecentralizedAttributAgent(Process):
         if len(self.nogood_set - self.backtrack_set) == 0:
             self.backtrack_set.clear()
         while True:
-            chosen_value = random.choice(list(self.nogood_set))
-            if chosen_value not in self.backtrack_set:
+            if len(self.nogood_set) == 0:
+                chosen_value = random.choice(list(self.all_domains))
                 break
+            else:
+                chosen_value = random.choice(list(self.nogood_set))
+                if chosen_value not in self.backtrack_set:
+                    break
         self.backtrack_set.add(chosen_value)
         self.nogood_set.remove(chosen_value)
         return chosen_value
@@ -183,7 +197,7 @@ class DecentralizedAttributAgent(Process):
     # Sendet Nachrichten an andere Agenten
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
-        message_data = json.dumps({"header": header, "message": message})
+        message_data = {"header": header, "message": message}
         recipient_queue.put((self.name, self.csp_number, message_data))
 
     # Empfängt Nachrichten von anderen Agenten und bearbeitet sie weiter
@@ -191,8 +205,11 @@ class DecentralizedAttributAgent(Process):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries
         handler = self.message_handlers.get(header)
         if handler:
-
-            handler(message)  # Rufe die zugehörige Funktion auf
+            try:
+                handler(message)  # Rufe die zugehörige Funktion auf
+            except Exception as e:
+                print(f"Error in {self.name} with message {message}")
+                print(e)
         else:
             print(f"Received unknown message type: {header} with message: {message}")
 
@@ -306,7 +323,7 @@ class DecentralizedAttributAgent(Process):
     # Sendet Nachrichten an andere Agenten, um einen Backtrack zu starten
     def backtrack(self):
         backtrack_value = self.get_nogood_value_for_backtrack()
-        print(f"Backtrack: {self.name} to value {backtrack_value}")
+        # print(f"Backtrack: {self.name} to value {backtrack_value}")
         for connection in self.constraints.keys():
             self.send_message(self.connections[connection], "backtrack",
                               {"sender": self.name, "id": self.agent_id, "value": backtrack_value})
@@ -331,7 +348,7 @@ class DecentralizedAttributAgent(Process):
     def run(self):
         while self.running:
             if not self.task_queue.empty():
-                sender, csp_id, message = self.task_queue.get()
+                sender, csp_id, message_data = self.task_queue.get()
                 if csp_id == self.csp_number:
-                    message = json.loads(message)
-                    self.receive_message(message["header"], message["message"])
+                    # message = json.loads(message)
+                    self.receive_message(message_data["header"], message_data["message"])

@@ -4,9 +4,53 @@ import time
 from sudoku_problem import Sudoku_Problem
 from UnitTest import read_sudoku
 from hierarchicalAgents import HierarchicalAttributAgent
-from decentralizedAgents import DecentralizedAttributAgent, DA_Coordinator
+from decentralizedAgents import DA_Coordinator, DecentralizedAttributAgent
+from constraintAgents import CA_Coordinator, ConstraintAgent
 import json
 
+def test_constraint():
+    start_time = time.perf_counter() * 1000
+    multiprocessing.set_start_method('spawn', force=True)
+    agents = []
+
+    with Manager() as manager:
+        n = 9
+        all_domain_list = list(range(1, n + 1))
+        problem = Sudoku_Problem(n, n_ary=True, conflict=False)
+
+        connections = dict()
+        connections["coordinator"] = manager.Queue()
+        i = 1
+        for constraint in problem.constraints:
+            connections[i] = manager.Queue()
+            i += 1
+
+        coordinator = CA_Coordinator(coordinator_queue=connections["coordinator"], connections=connections,
+                                     domains=all_domain_list)
+        agents.append(coordinator)
+
+        i = 1
+        for constraint, variables in problem.constraints:
+            agent = ConstraintAgent(agent_id=i,
+                                    variables=variables,
+                                    connections=connections,
+                                    constraint=constraint)
+            agents.append(agent)
+            i += 1
+
+        for agent in agents:
+            agent.start()
+
+        message = dict()
+        message["number_of_csp"] = 100
+        message_data = {"header": "start", "message": message}
+        connections["coordinator"].put(("Start-Main", 0, message_data))
+        end_time = time.perf_counter() * 1000
+        duration = end_time - start_time
+        print("Zeit für die Initialisierung:", duration, "ms")
+
+        for agent in agents:
+            agent.join()
 
 def test_decentralized():
     start_time = time.perf_counter() * 1000
@@ -14,7 +58,7 @@ def test_decentralized():
     agents = []
 
     with Manager() as manager:
-        n = 4
+        n = 9
         all_domain_list = list(range(1, n + 1))
         problem = Sudoku_Problem(n, n_ary=False, conflict=False)
 
@@ -37,7 +81,7 @@ def test_decentralized():
                 connections[variable] = manager.Queue()
 
         coordinator = DA_Coordinator(coordinator_queue=connections["coordinator"], connections=connections,
-                                     domains=all_domain_list, csp_numbers=1, con_dict=con_dict)
+                                     domains=all_domain_list, csp_numbers=400, con_dict=con_dict)
         agents.append(coordinator)
 
         i = 1
@@ -52,7 +96,7 @@ def test_decentralized():
         for agent in agents:
             agent.start()
 
-        message_data = json.dumps({"header": "start", "message": ""})
+        message_data = {"header": "start", "message": ""}
         connections["coordinator"].put(("Start-Main", 0, message_data))
 
         for agent in agents:
@@ -82,7 +126,7 @@ def test_hierarchy():
                         con_dict[var][connected_var] = None
         print(con_dict)
 
-        occupation_dict = read_sudoku(8)
+        occupation_dict = read_sudoku(1)
 
         for key in con_dict:
             for key2 in con_dict[key]:
@@ -119,33 +163,7 @@ def test_hierarchy():
 
 
 if __name__ == "__main__":
+
     # test_hierarchy()
-    test_decentralized()
-    # problem = Sudoku_Problem(9, n_ary=False, conflict=False)
-    # # print(problem.constraints)
-    # constraint_dict = {}
-    # con_dict = {}
-    # occupation_dict = {}
-    # for constraint, variables in problem.constraints:
-    #     for var in variables:
-    #         if var not in constraint_dict:
-    #             constraint_dict[var] = {}
-    #             con_dict[var] = {}
-    #             occupation_dict[var] = None
-    #         for connected_var in variables:
-    #             if connected_var != var:
-    #                 constraint_dict[var][connected_var] = constraint
-    #                 con_dict[var][connected_var] = None
-    #
-    # import pprint
-    # pp = pprint.PrettyPrinter(indent=4)
-    # pp.pprint(occupation_dict)
-    # print(constraint_dict)
-    # print(con_dict)
-    # print(occupation_dict)
-    # problem = Sudoku_Problem(9, n_ary=True, conflict=False)
-    # # for constraint in problem.constraints:
-    # #     print(constraint)
-    # # for cell in problem.cells:
-    # #     print(cell)
-    # print(problem.domains)
+    # test_decentralized()
+    test_constraint()

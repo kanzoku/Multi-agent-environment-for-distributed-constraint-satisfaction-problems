@@ -57,10 +57,10 @@ def generate_and_save_sudokus(file_name='sudoku_datenbank.xlsx', sheet_name='9x9
     sudoku_list = []
     for _ in range(num_sudokus):
         full_board = generate_full_sudoku()
-        puzzle_board = create_sudoku_puzzle(full_board, empties=55)
+        puzzle_board = create_sudoku_puzzle(full_board, empties=38)
         while not solve_sudoku([row[:] for row in puzzle_board]):
             full_board = generate_full_sudoku()
-            puzzle_board = create_sudoku_puzzle(full_board, empties=55)
+            puzzle_board = create_sudoku_puzzle(full_board, empties=38)
         print(f"Generiere Sudoku {len(sudoku_list) + 1} von {num_sudokus}.")
         flat_board = [num for row in puzzle_board for num in row]
         sudoku_list.append(flat_board)
@@ -103,4 +103,4 @@ def read_sudoku(number, test_number = 0):
 
 
 if __name__ == "__main__":
-    print(read_sudoku(1))
+    generate_and_save_sudokus()

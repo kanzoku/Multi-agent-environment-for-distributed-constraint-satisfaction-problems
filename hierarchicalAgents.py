@@ -1,6 +1,66 @@
 import json
 from multiprocessing import Process
 import time
+from UnitTest import read_sudoku
+
+
+class HA_Coordinator(Process):
+    def __init__(self, coordinator_queue, connections, domains, csp_numbers, con_dict, *args, **kwargs):
+        super(HA_Coordinator, self).__init__()
+        self.name = "coordinator"
+        self.coordinator_queue = coordinator_queue
+        self.connections = connections
+        self.domains = domains
+        self.con_dict = con_dict
+        self.running = True
+        self.occupation = None
+        self.csp_number = 0
+        self.number_of_csp = csp_numbers
+
+        self.solving_time = 0
+
+        # Dictionary mit den Funktionen zur Behandlung von Nachrichten
+        self.message_handlers = {
+            "confirm": self.handle_confirm,
+            "start": self.handle_start
+        }
+
+    def send_message(self, recipient_queue, header, message):
+        # Sendet Nachrichten an andere Agenten
+        message_data = {"header": header, "message": message}
+        recipient_queue.put((self.name, self.csp_number, message_data))
+
+    def receive_message(self, header, message):
+        # Behandelt eingehende Nachrichten mithilfe des Dictionaries
+        handler = self.message_handlers.get(header)
+        if handler:
+            handler(message)  # Rufe die zugehörige Funktion auf
+        else:
+            print(f"{self.name} received unknown message type: {header} with message: {message}")
+
+    def run(self):
+        while self.running:
+            if not self.coordinator_queue.empty():
+                sender, csp_id, message_data = self.coordinator_queue.get()
+                if csp_id == self.csp_number:
+                    self.receive_message(message_data["header"], message_data["message"])
+
+    def next_csp(self):
+        if self.csp_number < self.number_of_csp:
+            self.occupation = read_sudoku(self.csp_number + 1)
+            self.solving_time = time.perf_counter() * 1000
+            for connection in self.connections.keys():
+                message = {"domains": self.domains, "occupation": self.occupation,
+                            "csp_number": self.csp_number + 1}
+                self.send_message(self.connections[connection], "startagent", message)
+            print(f"Starting CSP {self.csp_number + 1}")
+            self.csp_number += 1
+        else:
+            print("All CSPs solved.")
+            for connection in self.connections.keys():
+                if connection != "coordinator":
+                    self.send_message(self.connections[connection], "kill", {"kill": ""})
+            self.running = False
 
 
 class HierarchicalAttributAgent(Process):
@@ -21,6 +81,7 @@ class HierarchicalAttributAgent(Process):
         self.n = n  # Anzahl der Agenten
         self.start_time = None
         self.end_time = None
+        self.csp_number = 0
 
         self.message_handlers = {
             "check": self.check,
@@ -76,7 +137,7 @@ class HierarchicalAttributAgent(Process):
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
-        message_data = json.dumps({"header": header, "message": message})
+        message_data = {"header": header, "message": message}
         recipient_queue.put((self.name, message_data))
 
     def receive_message(self, header, message):
@@ -236,11 +297,8 @@ class HierarchicalAttributAgent(Process):
         return True
 
     def run(self):
-        # Hauptloop des Agenten, um Nachrichten zu empfangen und verarbeiten
         while self.running:
-            sender, message_data = self.task_queue.get()  # Warten auf eine neue Nachricht
-            message_dict = json.loads(message_data)
-            header = message_dict["header"]
-            message = message_dict["message"]
-            #self.log(f"Received message from agent {sender}: {message_data}")
-            self.receive_message(header, message)
+            if not self.task_queue.empty():
+                sender, csp_id, message_data = self.task_queue.get()
+                if csp_id == self.csp_number:
+                    self.receive_message(message_data["header"], message_data["message"])

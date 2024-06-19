@@ -65,8 +65,6 @@ class DA_Coordinator(Process):
         if self.csp_number < self.number_of_csp:
             self.occupation = read_sudoku(self.csp_number+1)
             self.solving_time = time.perf_counter() * 1000
-            # self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
-            #                    'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
             for connection in self.connections.keys():
                 message = {"domains": self.domains, "occupation": self.occupation,
                            "csp_number": self.csp_number + 1}
@@ -342,13 +340,10 @@ class DecentralizedAttributAgent(Process):
         else:
             self.backtrack()
 
-
-
     # Hauptloop des Agenten
     def run(self):
         while self.running:
             if not self.task_queue.empty():
                 sender, csp_id, message_data = self.task_queue.get()
                 if csp_id == self.csp_number:
-                    # message = json.loads(message)
                     self.receive_message(message_data["header"], message_data["message"])

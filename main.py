@@ -42,7 +42,7 @@ def test_constraint():
             agent.start()
 
         message = dict()
-        message["number_of_csp"] = 100
+        message["number_of_csp"] = 5
         message_data = {"header": "start", "message": message}
         connections["coordinator"].put(("Start-Main", 0, message_data))
         end_time = time.perf_counter() * 1000

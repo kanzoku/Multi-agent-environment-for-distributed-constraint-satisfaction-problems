@@ -82,7 +82,7 @@ class CA_Coordinator(Process):
 
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
-            self.occupation = read_sudoku(self.csp_number + 2)
+            self.occupation = read_sudoku(self.csp_number + 1)
             self.status_dict = self.prepared_dict.copy()
             self.possibilities = self.prepared_dict.copy()
             self.solving_time = time.perf_counter() * 1000
@@ -111,7 +111,7 @@ class CA_Coordinator(Process):
     def solve(self):
         print("Solving")
         ranking, start = self.sort_and_create_sender_dict(self.possibilities)
-        print(ranking)
+        # print(ranking)
         if start is not None:
             self.send_message(self.connections[start], "start_solve", {"sender": self.name,
                                                                  "ranking": ranking, "occupation": self.occupation})
@@ -119,7 +119,7 @@ class CA_Coordinator(Process):
             print("No start found")
 
     def sort_and_create_sender_dict(self, data, order='asc'):
-        print(data)
+        # print(data)
         if order == 'asc':
             sorted_data = dict(sorted(data.items(), key=lambda item: item[1]))
         elif order == 'desc':

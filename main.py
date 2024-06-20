@@ -42,7 +42,7 @@ def test_constraint():
             agent.start()
 
         message = dict()
-        message["number_of_csp"] = 5
+        message["number_of_csp"] = 2
         message_data = {"header": "start", "message": message}
         connections["coordinator"].put(("Start-Main", 0, message_data))
         end_time = time.perf_counter() * 1000
@@ -126,7 +126,7 @@ def test_hierarchy():
                         con_dict[var][connected_var] = None
         print(con_dict)
 
-        occupation_dict = read_sudoku(1)
+        occupation_dict = read_sudoku(2)
 
         for key in con_dict:
             for key2 in con_dict[key]:

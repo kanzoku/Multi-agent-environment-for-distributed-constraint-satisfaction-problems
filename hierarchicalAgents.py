@@ -138,7 +138,7 @@ class HierarchicalAttributAgent(Process):
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
         message_data = {"header": header, "message": message}
-        recipient_queue.put((self.name, message_data))
+        recipient_queue.put((self.name, self.csp_number, message_data))
 
     def receive_message(self, header, message):
         # Behandelt eingehende Nachrichten mithilfe des Dictionaries

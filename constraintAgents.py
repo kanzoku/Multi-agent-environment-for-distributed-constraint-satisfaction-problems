@@ -18,17 +18,20 @@ class CA_Coordinator(Process):
         self.csp_number = 0
         self.number_of_csp = 0
         self.solving_time = 0
+        self.data_collection = dict()
 
         self.prepared_dict = self.prepare_dict()
         self.status_dict = dict()
         self.possibilities = dict()
+        self.collected_data = dict()
 
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
             "confirm": self.handle_confirm,
             "start": self.handle_start,
             "domain_propagation": self.handle_propagation,
-            "possible": self.handle_ask_possibilities
+            "possible": self.handle_ask_possibilities,
+            "ask_data": self.handle_data_collection,
         }
 
     def prepare_dict(self):
@@ -58,6 +61,14 @@ class CA_Coordinator(Process):
             end_time = time.perf_counter() * 1000
             duration = end_time - self.solving_time
             print("Zeit für die Lösung:", duration, "ms")
+            self.ask_data()
+
+    def handle_data_collection(self, message):
+        for key in message.keys():
+            self.data_collection[key] = self.data_collection.get(key, 0) + message[key]
+        self.collected_data[message["sender"]] = True
+        if all(self.collected_data.values()):
+            print(f"Die Daten des CSP: {self.data_collection}")
             self.next_csp()
 
     def handle_start(self, message):
@@ -69,22 +80,27 @@ class CA_Coordinator(Process):
         if int(message["sender"]) in self.status_dict:
             self.status_dict[message["sender"]] = True
             if all(self.status_dict.values()):
-                print("All propagations received")
                 self.all_propagations_true()
 
     def handle_ask_possibilities(self, message):
         if int(message["sender"]) in self.possibilities:
             self.possibilities[message["sender"]] = message["possibilities"]
             if None not in self.possibilities.values():
-                # print("All possibilities received")
-                # print(self.possibilities)
                 self.solve()
+
+    def ask_data(self):
+        for connection in self.connections.keys():
+            if connection == "coordinator":
+                continue
+            self.send_message(self.connections[connection], "ask_data", {"sender": self.name})
 
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
+            self.data_collection = dict()
             self.occupation = read_sudoku(self.csp_number + 1)
             self.status_dict = self.prepared_dict.copy()
             self.possibilities = self.prepared_dict.copy()
+            self.collected_data = self.prepared_dict.copy()
             self.solving_time = time.perf_counter() * 1000
             # self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
             #                    'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
@@ -153,7 +169,6 @@ class CA_Coordinator(Process):
                 'lastSender': last_sender,
                 'nextSender': next_sender
             }
-
         return result, start
 
     def run(self):
@@ -180,27 +195,33 @@ class ConstraintAgent(Process):
         self.csp_number = 0  # Kennung des gerade bearbeitenden CSP
         self.forward_check_filter = 0
         self.forward_check_dic = None
+        self.backjump_condition = True
+        self.data_collection_dict = None
+
 
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
             "check": self.handle_check,
             "domain_propagation": self.handle_domain_propagation,
             "backtrack": self.handle_backtrack,
+            "backjump": self.handle_backjump,
             "kill": self.handle_stop,
             "startagent": self.handle_startagent,
             "ask_possibilities": self.handle_ask_possibilities,
             "start_solve": self.handle_start_solve,
             "forward_check": self.handle_forward_check,
             "good_forward_check": self.handle_good_forward_check,
-            "bad_forward_check": self.handle_bad_forward_check
+            "bad_forward_check": self.handle_bad_forward_check,
+            "ask_data": self.handle_data_collection
         }
 
-    def prepare_forward_check_dic(self):
+    def prepare_forward_check_dic(self, ranking):
         preparation_dict = dict()
-        for connection in self.connections.keys():
-            if connection == "coordinator" or connection == self.agent_id:
-                continue
-            preparation_dict[int(connection)] = False
+        current_id = ranking[self.agent_id]['nextSender']
+        while current_id != 'end':
+            next_sender = ranking[current_id]['nextSender']
+            preparation_dict[current_id] = False
+            current_id = next_sender
         return preparation_dict
 
     def clear_forward_check_dic(self):
@@ -209,6 +230,7 @@ class ConstraintAgent(Process):
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
+        self.data_collection_dict[header] = self.data_collection_dict.get(header, 0) + 1
         message_data = {"header": header, "message": message}
         recipient_queue.put((str(self.agent_id), self.csp_number, message_data))
 
@@ -282,10 +304,10 @@ class ConstraintAgent(Process):
         keys = list(domain_dict.keys())
         values = itertools.product(*domain_dict.values())
         for combination in values:
-            if self.is_blocked_combination(combination, keys):
+            if len(set(combination)) != len(combination):
                 continue
 
-            if len(set(combination)) != len(combination):
+            if self.is_blocked_combination(combination, keys):
                 continue
 
             expr_copy = self.constraint
@@ -330,12 +352,16 @@ class ConstraintAgent(Process):
         self.possibilities = possibilities
 
     def handle_ask_possibilities(self, message):
-        # print(f"Agent {self.agent_id} mit {self.constraint} und den Domains {self.all_domains}")
         self.send_message(self.connections["coordinator"], "possible", {"sender": self.agent_id,
                                                               "possibilities": self.possibilities})
 
     def handle_check(self, message):
         self.check(message["occupation"], message)
+
+    def handle_data_collection(self, message):
+        new_message = self.data_collection_dict.copy()
+        new_message["sender"] = self.agent_id
+        self.send_message(self.connections["coordinator"], "ask_data", new_message)
 
     def handle_backtrack(self, message):
         # print(f"Agent {self.agent_id} received backtrack message")
@@ -343,6 +369,31 @@ class ConstraintAgent(Process):
         occ_dict = message["occupation"]
         occ_dict = self.add_bad_combination(occ_dict)
         self.check(occ_dict, message)
+
+    def handle_backjump(self, message):
+        self.forward_check_filter += 1
+        changed = False
+        domain_copy = message["domains"]
+        for key in domain_copy.keys():
+            if key in self.selected_values.keys():
+                changed = True
+                break
+        if changed:
+            occ_dict = message["occupation"]
+            occ_dict = self.add_bad_combination(occ_dict)
+            self.check(occ_dict, message)
+        else:
+
+            last_sender = message["ranking"][self.agent_id]["lastSender"]
+            if last_sender == "start":
+                occ_dict = message["occupation"]
+                occ_dict = self.add_bad_combination(occ_dict)
+                self.check(occ_dict, message)
+            else:
+                message_new = message.copy()
+                message_new["occupation"] = self.remove_last_solution(message["occupation"])
+                self.send_message(self.connections[message["ranking"][self.agent_id]["lastSender"]],
+                              "backtrack", message_new)
 
 
     def add_bad_combination(self, occupation):
@@ -359,8 +410,11 @@ class ConstraintAgent(Process):
 
     def handle_startagent(self, message):
         self.forward_check_filter = 0
-        self.forward_check_dic = self.prepare_forward_check_dic()
-        self.selected_values = None  # Ausgewählter Wert des Agenten
+        self.backjump_condition = True
+        self.solution_set = None
+        self.selected_values = None
+        self.forward_check_dic = None
+        self.data_collection_dict = dict()
         self.nogood_list.clear()
         for key in self.all_domains.keys():
             self.all_domains[key] = [None]
@@ -368,10 +422,11 @@ class ConstraintAgent(Process):
         self.csp_number = message["csp_number"]
         self.all_domain_list = message["domains"]
         self.domain_propagation()
-        # print(f"Agent {self.agent_id} started with propagation")
 
     def handle_start_solve(self, message):
         if message["ranking"][self.agent_id]["lastSender"] == "start":
+            self.backjump_condition = False
+            message["backjump"] = False
             self.check(self.occupation, message)
         else:
             self.send_message(self.connections["coordinator"], "error_start", {"sender": self.agent_id})
@@ -393,13 +448,7 @@ class ConstraintAgent(Process):
                 # print(f"Agent {self.agent_id} received good forward check message")
                 nextReceiver = message["ranking"][self.agent_id]["nextSender"]
                 message["sender"] = self.agent_id
-                if nextReceiver == "end":
-                    self.send_message(self.connections["coordinator"], "confirm", message)
-                else:
-                    self.send_message(self.connections[nextReceiver], "check", message)
-                    # print(
-                    #     f"Agent {self.agent_id} sent check message to {int(nextReceiver)} with occupation"
-                    #     f" {message['occupation']}")
+                self.send_message(self.connections[nextReceiver], "check", message)
 
     def handle_bad_forward_check(self, message):
         if int(message["filter"]) == self.forward_check_filter:
@@ -414,6 +463,7 @@ class ConstraintAgent(Process):
         for key in self.selected_values.keys():
             if occupation[key] is None:
                 occupation[key] = self.selected_values[key]
+        self.data_collection_dict["solution_changed"] = self.data_collection_dict.get("solution_changed", 0) + 1
         return occupation
 
     def remove_last_solution(self, occupation):
@@ -425,23 +475,38 @@ class ConstraintAgent(Process):
         return occupation
 
     def check(self, occupation, message):
+        # print(f"Agent {self.agent_id} {self.all_domains}")
+        if not self.backjump_condition and not message["backjump"]:
+            self.backjump_condition = True
+            message["backjump"] = True
+
+
         find_solution = self.find_valid_solution(occupation)
+        if self.forward_check_dic is None:
+            self.forward_check_dic = self.prepare_forward_check_dic(message["ranking"])
+
         if find_solution:
             new_message = message.copy()
-            # print(f"Agent {self.agent_id} found solution: {self.selected_values}")
             occupation_new = self.add_solution(occupation)
+            # print(f"Agent {self.agent_id} found solution: {occupation_new}")
             new_message["occupation"] = occupation_new
             new_message["sender"] = self.agent_id
             new_message["filter"] = self.forward_check_filter
             self.clear_forward_check_dic()
-            for connection in self.connections.keys():
-                if connection != self.agent_id and connection != "coordinator":
+            if not self.forward_check_dic:
+                self.send_message(self.connections["coordinator"], "confirm", message)
+            else:
+                for connection in self.forward_check_dic.keys():
                     self.send_message(self.connections[connection], "forward_check", new_message)
 
         else:
-            self.backtrack(message)
+            if self.backjump_condition:
+                self.backjump(message)
+            else:
+                self.backtrack(message)
 
-    def backtrack(self, message):
+    def backjump(self, message):
+        lastSender = message["ranking"][self.agent_id]["lastSender"]
         new_message = dict()
         new_message["domains"] = self.all_domains
         new_message["ranking"] = message["ranking"]
@@ -449,6 +514,19 @@ class ConstraintAgent(Process):
         new_message["occupation"] = self.remove_last_solution(message["occupation"])
         self.nogood_list.clear()
         self.selected_values = None
-        lastSender = message["ranking"][self.agent_id]["lastSender"]
-        # print(f"Agent {self.agent_id} sent backtrack message to {int(lastSender)}")
         self.send_message(self.connections[int(lastSender)], "backtrack", new_message)
+
+    def backtrack(self, message):
+        lastSender = message["ranking"][self.agent_id]["lastSender"]
+        new_message = message.copy()
+        new_message["ranking"] = message["ranking"]
+        new_message["sender"] = self.agent_id
+        new_message["occupation"] = self.remove_last_solution(message["occupation"])
+        self.nogood_list.clear()
+        self.selected_values = None
+        if lastSender == "start":
+            new_message["backjump"] = False
+            self.check(new_message["occupation"], new_message)
+        else:
+            self.send_message(self.connections[int(lastSender)], "backtrack", new_message)
+

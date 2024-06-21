@@ -31,7 +31,7 @@ class CA_Coordinator(Process):
             "start": self.handle_start,
             "domain_propagation": self.handle_propagation,
             "possible": self.handle_ask_possibilities,
-            "ask_data": self.handle_data_collection,
+            "ask_data": self.handle_data_collection
         }
 
     def prepare_dict(self):

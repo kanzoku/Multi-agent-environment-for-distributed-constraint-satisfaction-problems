@@ -17,6 +17,9 @@ class DA_Coordinator(Process):
         self.occupation = None
         self.csp_number = 0
         self.number_of_csp = csp_numbers
+        self.data_collection = dict()
+        self.collected_data = dict()
+        self.filter = True
 
         self.solving_time = 0
 
@@ -24,8 +27,17 @@ class DA_Coordinator(Process):
         self.message_handlers = {
             "confirm": self.handle_confirm,
             "unconfirm": self.handle_unconfirm,
-            "start": self.handle_start
+            "start": self.handle_start,
+            "ask_data": self.handle_data_collection
         }
+
+    def prepare_collected_data(self):
+        i = 1
+        for connection in self.connections.keys():
+            if connection != "coordinator":
+                self.collected_data[i] = False
+                i += 1
+        print(f"Prepared collected data: {self.collected_data}")
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
@@ -41,28 +53,52 @@ class DA_Coordinator(Process):
             print(f"{self.name} received unknown message type: {header} with message: {message}")
 
     def handle_confirm(self, message):
+        if not self.filter:
+            return
         self.occupation[message["sender"]] = message["value"]
         # print(f"Confirmed: {message['sender']} with value {message['value']}")
         if all([value is not None for value in self.occupation.values()]):
             end_time = time.perf_counter() * 1000
             duration = end_time - self.solving_time
-
+            self.filter = False
             print(f"Solution found: {self.occupation}")
             print("Zeit für die Lösung:", duration, "ms")
+            self.ask_data()
 
+    def handle_data_collection(self, message):
+        for key in message.keys():
+            if key == "sender":
+                continue
+            self.data_collection[key] = self.data_collection.get(key, 0) + message[key]
+        # print(f"Data collected from {message['sender']}")
+        self.collected_data[message["sender"]] = True
+        if all(self.collected_data.values()):
+            print(f"Die Daten des CSP: {self.data_collection}")
             self.next_csp()
 
     def handle_unconfirm(self, message):
         # print(f"Unconfirmed: {message['sender']} with value {self.occupation[message['sender']]}")
-        self.occupation[message["sender"]] = None
+        if self.filter:
+            self.occupation[message["sender"]] = None
+
 
 
     def handle_start(self, message):
         print("Starting coordinator")
         self.next_csp()
 
+    def ask_data(self):
+        print("Asking for data")
+        for connection in self.connections.keys():
+            if connection == "coordinator":
+                continue
+            self.send_message(self.connections[connection], "ask_data", {"sender": self.name})
+
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
+            self.prepare_collected_data()
+            self.filter = True
+            self.data_collection.clear()
             self.occupation = read_sudoku(self.csp_number+1)
             self.solving_time = time.perf_counter() * 1000
             for connection in self.connections.keys():
@@ -104,6 +140,7 @@ class DecentralizedAttributAgent(Process):
         self.list_run = 0  # Anzahl der Durchläufe
         self.csp_number = 0  # Kennung des gerade bearbeitenden CSP
         self.confirmed = False  # Flag, ob der Agent bestätigt hat
+        self.data_collection_dict = dict()  # Dictionary für die Datensammlung
 
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
@@ -113,7 +150,8 @@ class DecentralizedAttributAgent(Process):
             "backtrack": self.handle_backtrack,
             "nogood": self.handle_nogood,
             "kill": self.handle_stop,
-            "startagent": self.handle_startagent
+            "startagent": self.handle_startagent,
+            "ask_data": self.handle_data_collection
         }
 
     # Erstellt ein Dictionary für die Vorbereitung des Agenten-Views
@@ -189,12 +227,14 @@ class DecentralizedAttributAgent(Process):
             if value not in nogood_set and value not in agent_view_keys:
                 self.agent_view_dict[value] = self.agent_view_preparation_dict
                 self.selected_value = value
+                self.data_collection_dict["solution_changed"] = self.data_collection_dict.get("solution_changed", 0) + 1
                 return True
         return False
 
     # Sendet Nachrichten an andere Agenten
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
+        self.data_collection_dict[header] = self.data_collection_dict.get(header, 0) + 1
         message_data = {"header": header, "message": message}
         recipient_queue.put((self.name, self.csp_number, message_data))
 
@@ -210,6 +250,11 @@ class DecentralizedAttributAgent(Process):
                 print(e)
         else:
             print(f"Received unknown message type: {header} with message: {message}")
+
+    def handle_data_collection(self, message):
+        new_message = self.data_collection_dict.copy()
+        new_message["sender"] = self.agent_id
+        self.send_message(self.connections["coordinator"], "ask_data", new_message)
 
     # Behandelt Must-be-Nachrichten, um eindeutige Werte zu confirmen und die Domäne-Menge zu aktualisieren
     def handle_must_be(self, message):
@@ -229,6 +274,7 @@ class DecentralizedAttributAgent(Process):
 
     # Behandelt Startagent-Nachrichten, um mehrere Durchläufe zu ermöglichen, ohne die Agenten neu zu starten
     def handle_startagent(self, message):
+        self.data_collection_dict.clear()
         if message["occupation"][self.name] is None:
             shuffled_domains = message["domains"]
             random.shuffle(shuffled_domains)

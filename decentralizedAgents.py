@@ -1,4 +1,3 @@
-import json
 from multiprocessing import Process
 import random
 from UnitTest import read_sudoku
@@ -80,8 +79,6 @@ class DA_Coordinator(Process):
         # print(f"Unconfirmed: {message['sender']} with value {self.occupation[message['sender']]}")
         if self.filter:
             self.occupation[message["sender"]] = None
-
-
 
     def handle_start(self, message):
         print("Starting coordinator")
@@ -302,13 +299,11 @@ class DecentralizedAttributAgent(Process):
             self.send_message(self.connections[message["sender"]], "good",
                               {"sender": self.name, "id": self.agent_id, "value": message["value"],
                                "list_run": message["list_run"]})
-            # print(f"Send Good: {self.name}({self.selected_value})  to {message['sender']} with value {message['value']}")
         else:
             if message["id"] < self.agent_id and len(self.all_domains) > 1:
                 self.send_message(self.connections[message["sender"]], "good",
                                   {"sender": self.name, "id": self.agent_id, "value": message["value"],
                                    "list_run": message["list_run"]})
-                # print(f"Send changed Good: {self.name}  to {message['sender']} with value {message['value']}")
                 self.agent_view_dict.clear()
                 self.nogood_set.clear()
                 self.nogood_set.add(message["value"])
@@ -322,7 +317,6 @@ class DecentralizedAttributAgent(Process):
                 self.send_message(self.connections[message["sender"]], "nogood",
                                   {"sender": self.name, "id": self.agent_id, "value": message["value"],
                                    "list_run": message["list_run"]})
-                # print(f"Send no-Good: {self.name}  to {message['sender']} with value {message['value']}")
 
     # Behandelt Good-Nachrichten, dabei wird der boolean Wert für den Agenten in der Domäne auf True gesetzt und
     # sollten alle True sein wird die Domäne confirmed
@@ -335,7 +329,6 @@ class DecentralizedAttributAgent(Process):
                                   {"sender": self.name, "value": message["value"]})
                 self.confirmed = True
 
-
     # Behandelt No-good-Nachrichten, dabei wird der Wert aus der betrachteten Domains entfernt
     # und in die No-good-Liste eingefügt
     def handle_nogood(self, message):
@@ -347,12 +340,11 @@ class DecentralizedAttributAgent(Process):
                 self.nogood_set.add(message["value"])
                 self.check()
 
-
     # Behandelt Backtrack-Nachrichten, dabei werden die Domains des Agenten mit den Domains des sendenden Agenten
     # verglichen und sollte der selektierte Wert in der Schnittmenge liegen, wird der Agent zurückgesetzt und ein
     # neuer Check wird durchgeführt
     def handle_backtrack(self, message):
-        if len(self.all_domains) > 1: #and message["id"] > self.agent_id:
+        if len(self.all_domains) > 1:
             if self.selected_value is message["value"]:
                 # print(f"Had to Backtrack: {self.name} with value {self.selected_value}")
                 if self.confirmed:

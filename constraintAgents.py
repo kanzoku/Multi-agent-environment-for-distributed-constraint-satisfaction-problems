@@ -1,4 +1,3 @@
-import json
 from multiprocessing import Process
 import random
 import itertools

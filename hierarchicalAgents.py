@@ -63,21 +63,28 @@ class HA_Coordinator(Process):
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
             self.collected_data = self.prepare_dict()
-            self.occupation = read_sudoku(self.csp_number + 1)
-            con_dict = self.fill_con_dict(self.occupation)
+            occupation = read_sudoku(self.csp_number + 1)
+            con_dict = self.fill_con_dict(occupation)
+            self.occupation = occupation
             for connection in self.connections.keys():
                 if connection == "coordinator":
                     continue
-                message = {"domains": self.domains, "con_dict": con_dict[connection],
-                           "csp_number": self.csp_number + 1}
-                self.send_message(self.connections[connection], "new_start", message)
+                if occupation[connection] is None:
+                    message = {"domains": self.domains, "con_dict": con_dict[connection],
+                               "csp_number": self.csp_number + 1, "active": True}
+                    self.send_message(self.connections[connection], "new_start", message)
+                else:
+                    message = {"domains": self.domains, "con_dict": con_dict[connection],
+                               "csp_number": self.csp_number + 1, "active": False}
+                    self.send_message(self.connections[connection], "new_start", message)
+
             print(f"Starting CSP {self.csp_number + 1}")
             self.solving_time = time.perf_counter() * 1000
             self.csp_number += 1
             for key in self.occupation:
                 if self.occupation[key] is None:
-                    self.send_message(self.connections["a1"], "start_solving",
-                              {"occupation": self.occupation, "sender": [], "identifier": []})
+                    self.send_message(self.connections[key], "start_solving",
+                                      {"occupation": self.occupation, "sender": [], "identifier": []})
                     return
         else:
             print("All CSPs solved.")
@@ -96,16 +103,16 @@ class HA_Coordinator(Process):
         new_con_dict = self.con_dict.copy()
         for key in new_con_dict:
             for key2 in new_con_dict[key]:
-                if key2 in occupation and not occupation[key2] is None:
-                    new_con_dict[key][key2] = occupation[key2]
+                new_con_dict[key][key2] = occupation[key2]
         return new_con_dict
 
     def handle_unconfirm(self, message):
-        print("No solution found.")
-        end_time = time.perf_counter() * 1000
-        duration = end_time - self.solving_time
-        print("Zeit für die Lösung:", duration, "ms")
-        self.ask_data()
+        return
+        # print("No solution found.")
+        # end_time = time.perf_counter() * 1000
+        # duration = end_time - self.solving_time
+        # print("Zeit für die Lösung:", duration, "ms")
+        # self.ask_data()
 
     def handle_confirm(self, message):
         print(f"Solution found: {message['occupation']}")
@@ -131,7 +138,7 @@ class HA_Coordinator(Process):
 
 
 class HierarchicalAttributAgent(Process):
-    def __init__(self, agent_id,  name, connections, constraints, *args, **kwargs):
+    def __init__(self, agent_id, name, connections, constraints, *args, **kwargs):
         super(HierarchicalAttributAgent, self).__init__()
         self.agent_id = agent_id  # ID des Agenten
         self.name = name  # Name des Agenten
@@ -158,8 +165,6 @@ class HierarchicalAttributAgent(Process):
 
     def unit_testing(self, occupation, domains):
         # Testet die Constraints mit den gegebenen Domains und eliminiert invalide Domains
-        # if occupation[self.name] is not None:
-        #     return {occupation[self.name]}
         set_domain = set()
         for key in occupation:
             if occupation[key] is not None:
@@ -170,8 +175,9 @@ class HierarchicalAttributAgent(Process):
             if domain not in set_domain:
                 list_domain.append(domain)
         if len(list_domain) == 0:
-            print("No solution found.")
-            self.kill_all()
+            print(f"{self.name} No solution found.")
+            print(f"{self.name} occupation: {occupation} and domains: {domains}")
+            # self.kill_all()
         # print (f"{self.name} meine Domains: {list_domain}")
         return list_domain
 
@@ -322,13 +328,14 @@ class HierarchicalAttributAgent(Process):
         self.running = False
 
     def handle_new_start(self, message):
-        self.all_domains = self.unit_testing(message["con_dict"], message["domains"])
-        random.shuffle(self.all_domains)
-        self.nogood_dict = dict()
-        self.agent_view = dict()
-        self.occupation = message["con_dict"]
-        self.csp_number = message["csp_number"]
         self.data_collection_dict = dict()
+        self.csp_number = message["csp_number"]
+        if message["active"]:
+            self.nogood_dict = dict()
+            self.agent_view = dict()
+            self.occupation = message["con_dict"]
+            self.all_domains = self.unit_testing(message["con_dict"], message["domains"])
+            random.shuffle(self.all_domains)
 
     def handle_start_solving(self, communicationDict):
         # Startet den Agenten

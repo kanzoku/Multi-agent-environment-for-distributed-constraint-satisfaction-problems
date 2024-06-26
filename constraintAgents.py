@@ -64,6 +64,8 @@ class CA_Coordinator(Process):
 
     def handle_data_collection(self, message):
         for key in message.keys():
+            if key == "sender":
+                continue
             self.data_collection[key] = self.data_collection.get(key, 0) + message[key]
         self.collected_data[message["sender"]] = True
         if all(self.collected_data.values()):
@@ -96,7 +98,7 @@ class CA_Coordinator(Process):
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
             self.data_collection = dict()
-            self.occupation = read_sudoku(self.csp_number + 1)
+            self.occupation = read_sudoku(self.csp_number + 1+54)
             self.status_dict = self.prepared_dict.copy()
             self.possibilities = self.prepared_dict.copy()
             self.collected_data = self.prepared_dict.copy()

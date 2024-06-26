@@ -42,7 +42,7 @@ def test_constraint():
             agent.start()
 
         message = dict()
-        message["number_of_csp"] = 2
+        message["number_of_csp"] = 100
         message_data = {"header": "start", "message": message}
         connections["coordinator"].put(("Start-Main", 0, message_data))
         end_time = time.perf_counter() * 1000
@@ -155,7 +155,7 @@ def test_hierarchy():
         print("Zeit für die Initialisierung:", duration, "ms")
 
         message = dict()
-        message["number_of_csp"] = 1
+        message["number_of_csp"] = 2
         message_data = {"header": "start", "message": message}
         connections["coordinator"].put(("Start-Main", 0, message_data))
 
@@ -165,6 +165,6 @@ def test_hierarchy():
 
 if __name__ == "__main__":
 
-    test_hierarchy()
+    # test_hierarchy()
     # test_decentralized()
-    # test_constraint()
+    test_constraint()

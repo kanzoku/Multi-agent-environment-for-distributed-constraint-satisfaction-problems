@@ -53,7 +53,7 @@ def solve_sudoku(board):
             board[row][col] = 0
     return False
 
-def generate_and_save_sudokus(file_name='sudoku_datenbank.xlsx', sheet_name='9x9', num_sudokus=25):
+def generate_and_save_sudokus(file_name='sudoku_datenbank.xlsx', sheet_name='9x9', num_sudokus=20):
     sudoku_list = []
     for _ in range(num_sudokus):
         full_board = generate_full_sudoku()
@@ -106,6 +106,7 @@ def read_sudoku(number, test_number = 0):
     file_name = 'sudoku_datenbank.xlsx'
     sheet_name = '9x9'
     occupation_dict = read_sudoku_to_dict(file_name, sheet_name, row_number)
+    print(f"Das Sudoku mit der Nummer {number} in Zeile {number+1} wurde erfolgreich eingelesen.")
     print(occupation_dict)
     return occupation_dict
 

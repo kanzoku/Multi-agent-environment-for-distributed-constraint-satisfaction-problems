@@ -6,13 +6,15 @@ import random
 
 
 class HA_Coordinator(Process):
-    def __init__(self, connections, domains, csp_numbers, con_dict, *args, **kwargs):
+    def __init__(self, connections, domains, csp_numbers, con_dict, level, sudoku_size, *args, **kwargs):
         super(HA_Coordinator, self).__init__()
         self.name = "coordinator"
         self.coordinator_queue = connections["coordinator"]
         self.connections = connections
         self.domains = domains
         self.con_dict = con_dict
+        self.level = level
+        self.size = sudoku_size
         self.running = True
         self.occupation = None
         self.csp_number = 0
@@ -63,7 +65,8 @@ class HA_Coordinator(Process):
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
             self.collected_data = self.prepare_dict()
-            occupation = read_sudoku(self.csp_number + 1)
+            self.data_collection = dict()
+            occupation = read_sudoku(self.csp_number + 1, self.size, self.level)
             con_dict = self.fill_con_dict(occupation)
             self.occupation = occupation
             for connection in self.connections.keys():

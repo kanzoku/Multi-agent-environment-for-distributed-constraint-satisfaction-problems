@@ -5,13 +5,16 @@ import time
 
 
 class DA_Coordinator(Process):
-    def __init__(self, coordinator_queue, connections, domains, csp_numbers, con_dict, *args, **kwargs):
+    def __init__(self, coordinator_queue, connections, domains, csp_numbers, con_dict,
+                 level, sudoku_size, *args, **kwargs):
         super(DA_Coordinator, self).__init__()
         self.name = "coordinator"
         self.coordinator_queue = coordinator_queue
         self.connections = connections
         self.domains = domains
         self.con_dict = con_dict
+        self.level = level  # Level des Sudoku-Rätsels
+        self.size = sudoku_size  # Größe des Sudoku-Rätsels
         self.running = True
         self.occupation = None
         self.csp_number = 0
@@ -96,7 +99,7 @@ class DA_Coordinator(Process):
             self.prepare_collected_data()
             self.filter = True
             self.data_collection.clear()
-            self.occupation = read_sudoku(self.csp_number+1)
+            self.occupation = read_sudoku(self.csp_number + 1, self.size, self.level)
             self.solving_time = time.perf_counter() * 1000
             for connection in self.connections.keys():
                 message = {"domains": self.domains, "occupation": self.occupation,
@@ -125,6 +128,7 @@ class DecentralizedAttributAgent(Process):
         self.task_queue = connections[self.name]  # Queue für Aufgaben
         self.connections = connections  # Ein Dictionary von Verbindungen zu anderen Agenten
         self.constraints = constraints  # Dict von Constraints zu anderen Agenten
+
         self.all_domains = None  # Liste aller möglicher eigener Domains
         self.nogood_set = set()  # Set mit No-goods des Agenten
         self.backtrack_set = set()  # Set mit Backtrack-Values des Agenten

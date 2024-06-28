@@ -6,12 +6,15 @@ from UnitTest import read_sudoku
 
 
 class CA_Coordinator(Process):
-    def __init__(self, coordinator_queue, connections, domains, *args, **kwargs):
+    def __init__(self, coordinator_queue, connections, domains, rank_order, level, sudoku_size, *args, **kwargs):
         super(CA_Coordinator, self).__init__()
         self.name = "coordinator"
         self.coordinator_queue = coordinator_queue
         self.connections = connections
         self.domains = domains
+        self.rank_order = rank_order
+        self.level = level
+        self.size = sudoku_size
         self.running = True
         self.occupation = None
         self.csp_number = 0
@@ -98,7 +101,7 @@ class CA_Coordinator(Process):
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
             self.data_collection = dict()
-            self.occupation = read_sudoku(self.csp_number + 1+54)
+            self.occupation = read_sudoku(self.csp_number + 1, self.size, self.level)
             self.status_dict = self.prepared_dict.copy()
             self.possibilities = self.prepared_dict.copy()
             self.collected_data = self.prepared_dict.copy()
@@ -127,7 +130,7 @@ class CA_Coordinator(Process):
 
     def solve(self):
         print("Solving")
-        ranking, start = self.sort_and_create_sender_dict(self.possibilities)
+        ranking, start = self.sort_and_create_sender_dict(self.possibilities, self.rank_order)
         # print(ranking)
         if start is not None:
             self.send_message(self.connections[start], "start_solve", {"sender": self.name,
@@ -257,7 +260,7 @@ class ConstraintAgent(Process):
         for key in self.all_domains.keys():
             if self.occupation[key] is not None:
                 self.all_domains[key] = [self.occupation[key]]
-                domain_set.remove(self.occupation[key])
+                domain_set.discard(self.occupation[key])
 
         domain_list = list(domain_set)
 

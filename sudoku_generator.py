@@ -1,7 +1,6 @@
 import pandas as pd
 import random
 
-
 def generate_full_sudoku():
     base = 3
     side = base * base
@@ -61,7 +60,7 @@ def solve_sudoku(board):
     return False
 
 
-def generate_and_save_sudokus(file_name='sudoku_datenbank.xlsx', sheet_name='9x9', num_sudokus=20):
+def generate_and_save_sudokus(file_name='datenbank.xlsx', sheet_name='9x9', num_sudokus=20):
     sudoku_list = []
     for _ in range(num_sudokus):
         full_board = generate_full_sudoku()
@@ -88,44 +87,6 @@ def generate_and_save_sudokus(file_name='sudoku_datenbank.xlsx', sheet_name='9x9
         df.to_excel(writer, index=False, startrow=0, sheet_name=sheet_name)
 
     print(f"Die Sudokus wurden erfolgreich in '{file_name}' im Worksheet '{sheet_name}' gespeichert.")
-
-
-def read_sudoku_to_dict(file_name, sheet_name, row_number):
-    df = pd.read_excel(file_name, sheet_name=sheet_name)
-    sudoku_row = df.iloc[row_number - 1].tolist()
-    if sheet_name == "4x4":
-        column_labels = [f"{chr(97 + i)}{j + 1}" for i in range(4) for j in range(4)]
-    else:
-        column_labels = [f"{chr(97 + i)}{j + 1}" for i in range(9) for j in range(9)]
-    occupation_dict = {label: None for label in column_labels}
-    for label, value in zip(column_labels, sudoku_row):
-        if value == 0:
-            occupation_dict[label] = None
-        else:
-            occupation_dict[label] = value
-    return occupation_dict
-
-
-def read_sudoku(number, size, level, test_number=0):
-    if test_number == 4:
-        occupation_dict = {"a1": None, "a2": None, "a3": None, "a4:": None,
-                           "b1": None, "b2": None, "b3": None, "b4": None,
-                           "c1": None, "c2": None, "c3": None, "c4": None,
-                           "d1": None, "d2": None, "d3": None, "d4": None}
-        print(occupation_dict)
-        return occupation_dict
-    row_number = number + ((level - 1) * 100)
-    file_name = 'sudoku_datenbank.xlsx'
-    sheet_name = size
-    print(f"Requested sheet name: {sheet_name}")  # Debugging-Ausgabe
-    sheet_names = pd.ExcelFile(file_name).sheet_names
-    print(f"Available sheets: {sheet_names}")  # Debugging-Ausgabe
-    if sheet_name not in sheet_names:
-        raise ValueError(f"Sheet '{sheet_name}' does not exist in the file.")
-    occupation_dict = read_sudoku_to_dict(file_name, sheet_name, row_number)
-    print(f"Das Sudoku mit der Nummer {number} in Zeile {number + 1} wurde erfolgreich eingelesen.")
-    print(occupation_dict)
-    return occupation_dict
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 from multiprocessing import Process
 import random
-from UnitTest import read_sudoku
+from databank_manager import TestResultsManager
 import time
 
 
 class DA_Coordinator(Process):
-    def __init__(self, coordinator_queue, connections, domains, csp_numbers, con_dict,
+    def __init__(self, coordinator_queue, connections, domains, con_dict,
                  level, sudoku_size, *args, **kwargs):
         super(DA_Coordinator, self).__init__()
         self.name = "coordinator"
@@ -18,12 +18,17 @@ class DA_Coordinator(Process):
         self.running = True
         self.occupation = None
         self.csp_number = 0
-        self.number_of_csp = csp_numbers
+        self.number_of_csp = 0
         self.data_collection = dict()
+        self.all_solution_collection = dict()
         self.collected_data = dict()
         self.filter = True
 
         self.solving_time = 0
+
+        self.test_series = None
+        self.databank_manager = TestResultsManager("datenbank.xlsx")
+        self.test_data_collection = dict()
 
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
@@ -32,6 +37,53 @@ class DA_Coordinator(Process):
             "start": self.handle_start,
             "ask_data": self.handle_data_collection
         }
+
+    def update_all_solution_collection(self):
+        for key in self.data_collection.keys():
+            self.all_solution_collection[key] = self.all_solution_collection.get(key, 0) + self.data_collection[key]
+
+    def write_detailed_test_series(self):
+        detailed_test_series_data = {"Testreihe-ID": self.test_series["Testreihe-ID"],
+                                     "Lösung-ID": self.csp_number,
+                                     "System": self.test_series["System"],
+                                     "Agentsystem": self.test_series["Agentsystem"],
+                                     "Kommentar": "",
+                                     "Size": self.size,
+                                     "Level": self.level,
+                                     "Lösungszeit (ms)": round(self.test_data_collection[self.csp_number]["duration"],
+                                                               2),
+                                     "check": self.data_collection.get("check", 0),
+                                     "must_be": self.data_collection.get("must_be", 0),
+                                     "backtrack": self.data_collection.get("backtrack", 0),
+                                     "good": self.data_collection.get("good", 0),
+                                     "nogood": self.data_collection.get("nogood", 0),
+                                     "unconfirm": self.data_collection.get("bad_forward_check", 0),
+                                     "confirm": self.data_collection.get("confirm", 0),
+                                     "Wertveränderungen": self.data_collection.get("solution_changed", 0),
+                                     "Initialisierungs-Nachrichten": (self.data_collection.get("must_be", 0)),
+                                     "Lösungs-Nachrichten": (self.data_collection.get("confirm", 0) +
+                                                             self.data_collection.get("unconfirm", 0) +
+                                                             self.data_collection.get("good", 0) +
+                                                             self.data_collection.get("nogood", 0) +
+                                                             self.data_collection.get("backtrack", 0) +
+                                                             self.data_collection.get("check", 0))}
+        detailed_test_series_data["Gesamtanzahl der Nachrichten"] = \
+            (detailed_test_series_data["Initialisierungs-Nachrichten"] +
+             detailed_test_series_data["Lösungs-Nachrichten"])
+        self.databank_manager.add_detailed_test_series(detailed_test_series_data)
+        self.test_data_collection["Gesamtanzahl der Nachrichten"] = (
+                self.test_data_collection.get("Gesamtanzahl der Nachrichten", 0) +
+                detailed_test_series_data["Gesamtanzahl der Nachrichten"])
+
+    def write_test_series(self):
+        self.test_series["Gesamt-Lösungszeit (ms)"] = round(self.test_data_collection.get("solution_time", 0), 2)
+        self.test_series["Gesamtanzahl der Nachrichten"] = self.test_data_collection.get("Gesamtanzahl der Nachrichten",
+                                                                                         0)
+        self.test_series["Durchschnittliche Lösungszeit (ms)"] = round(
+            self.test_series["Gesamt-Lösungszeit (ms)"] / self.test_data_collection["solution_count"], 2)
+        self.test_series["Durchschnittliche Anzahl der Nachrichten"] = round(
+            self.test_series["Gesamtanzahl der Nachrichten"] / self.test_data_collection["solution_count"], 2)
+        self.databank_manager.add_test_series(self.test_series)
 
     def prepare_collected_data(self):
         i = 1
@@ -65,6 +117,9 @@ class DA_Coordinator(Process):
             self.filter = False
             print(f"Solution found: {self.occupation}")
             print("Zeit für die Lösung:", duration, "ms")
+            self.test_data_collection["solution_time"] = self.test_data_collection.get("solution_time", 0) + duration
+            self.test_data_collection["solution_count"] = self.test_data_collection.get("solution_count", 0) + 1
+            self.test_data_collection[self.csp_number] = {"duration": duration, "solution": self.occupation}
             self.ask_data()
 
     def handle_data_collection(self, message):
@@ -76,6 +131,8 @@ class DA_Coordinator(Process):
         self.collected_data[message["sender"]] = True
         if all(self.collected_data.values()):
             print(f"Die Daten des CSP: {self.data_collection}")
+            self.test_data_collection[self.csp_number]["messages"] = self.data_collection
+            self.write_detailed_test_series()
             self.next_csp()
 
     def handle_unconfirm(self, message):
@@ -85,6 +142,14 @@ class DA_Coordinator(Process):
 
     def handle_start(self, message):
         print("Starting coordinator")
+        self.number_of_csp = int(message["number_of_csp"])
+        self.test_series = message["test_series"]
+        self.test_series["Testreihe-ID"] = self.databank_manager.get_next_test_series_id()
+
+        initial_time = message["initial_time"]
+        self.test_series["Gesamt-Initialisierungszeit (ms)"] = round(initial_time, 2)
+        print(f"Initialisierungszeit: {self.test_series['Gesamt-Initialisierungszeit (ms)']} ms")
+
         self.next_csp()
 
     def ask_data(self):
@@ -96,10 +161,12 @@ class DA_Coordinator(Process):
 
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
+            self.update_all_solution_collection()
             self.prepare_collected_data()
             self.filter = True
             self.data_collection.clear()
-            self.occupation = read_sudoku(self.csp_number + 1, self.size, self.level)
+            self.occupation = self.databank_manager.read_sudoku(number=self.csp_number + 1,
+                                                                size=self.size, level=self.level)
             self.solving_time = time.perf_counter() * 1000
             for connection in self.connections.keys():
                 message = {"domains": self.domains, "occupation": self.occupation,
@@ -108,6 +175,13 @@ class DA_Coordinator(Process):
             print(f"Starting CSP {self.csp_number + 1}")
             self.csp_number += 1
         else:
+            for connection in self.connections.keys():
+                self.send_message(self.connections[connection], "kill", {"sender": self.name})
+            print("All CSPs solved")
+            self.update_all_solution_collection()
+            print(f"Die Daten aller CSPs: {self.all_solution_collection}")
+            self.write_test_series()
+            self.databank_manager.save_dataframes()
             self.running = False
 
     def run(self):

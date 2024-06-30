@@ -2,7 +2,7 @@ from multiprocessing import Process
 import random
 import itertools
 import time
-from UnitTest import read_sudoku
+from sudoku_generator import read_sudoku
 
 class C_Coordinator(Process):
     def __init__(self, coordinator_queue, connections, domains, *args, **kwargs):
@@ -115,8 +115,35 @@ class SolverAgent(Process):
         self.running = False
 
 class ManagerAgent(Process):
-    def __init__(self, agent_id, connections, *args, **kwargs):
+    def __init__(self, agent_id, connections, variables, domains, *args, **kwargs):
         super(ManagerAgent, self).__init__()
+        self.running = True
+        self.name = f"Agent-{agent_id}-Manager"
+        self.agent_id = agent_id
+        self.connections = connections
+        self.own_queue = self.connections[self.agent_id]
+        self.all_domains = {variable: [None] for variable in variables}
+        self.all_domain_list = domains
+        self.all_solutions = list(itertools.permutations(self.all_domain_list))
+
+        self.csp_number = 0
+
+        self.occupation = None
+        self.possibilities = 1
+        self.selected_values = None
+        self.combinations = None
+
+        self.message_handlers = {
+            "domain_propagation": self.handle_domain_propagation,
+            "backtrack": self.handle_backtrack,
+            "kill": self.handle_kill,
+            "startagent": self.handle_startagent,
+            "ask_possibilities": self.handle_ask_possibilities,
+            "forward_check": self.handle_forward_check,
+            "good_forward_check": self.handle_good_forward_check,
+            "bad_forward_check": self.handle_bad_forward_check,
+            "ask_data": self.handle_data_collection
+        }
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
@@ -137,5 +164,25 @@ class ManagerAgent(Process):
                 sender, csp_id, message = self.own_queue.get()
                 self.receive_message(message["header"], message["message"])
 
+    def domain_propagation(self):
+        keys = list(self.all_domains.keys())
+        for key in keys:
+            if self.occupation[key] is not None:
+                self.all_domains[key] = [self.occupation[key]]
+                
+
     def handle_kill(self, message):
         self.running = False
+
+    def handle_startagent(self, message):
+        self.combinations = self.all_solutions
+        self.selected_values = None
+        self.forward_check_dic = None
+        self.data_collection_dict = dict()
+        self.nogood_list.clear()
+        for key in self.all_domains.keys():
+            self.all_domains[key] = [None]
+        self.occupation = message["occupation"]
+        self.csp_number = message["csp_number"]
+        self.all_domain_list = message["domains"]
+        self.domain_propagation()

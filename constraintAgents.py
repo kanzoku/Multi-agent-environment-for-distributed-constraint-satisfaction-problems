@@ -2,7 +2,7 @@ from multiprocessing import Process
 import random
 import itertools
 import time
-from UnitTest import read_sudoku
+from databank_manager import TestResultsManager
 
 
 class CA_Coordinator(Process):
@@ -20,12 +20,18 @@ class CA_Coordinator(Process):
         self.csp_number = 0
         self.number_of_csp = 0
         self.solving_time = 0
+
         self.data_collection = dict()
+        self.all_solution_collection = dict()
 
         self.prepared_dict = self.prepare_dict()
         self.status_dict = dict()
         self.possibilities = dict()
         self.collected_data = dict()
+
+        self.test_series = None
+        self.databank_manager = TestResultsManager("datenbank.xlsx")
+        self.test_data_collection = dict()
 
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
@@ -36,6 +42,10 @@ class CA_Coordinator(Process):
             "ask_data": self.handle_data_collection
         }
 
+    def update_all_solution_collection(self):
+        for key in self.data_collection.keys():
+            self.all_solution_collection[key] = self.all_solution_collection.get(key, 0) + self.data_collection[key]
+
     def prepare_dict(self):
         preparation_dict = dict()
         for connection in self.connections.keys():
@@ -43,6 +53,54 @@ class CA_Coordinator(Process):
                 continue
             preparation_dict[connection] = None
         return preparation_dict
+
+    def write_detailed_test_series(self):
+        detailed_test_series_data = {"Testreihe-ID": self.test_series["Testreihe-ID"],
+                                     "Lösung-ID": self.csp_number,
+                                     "System": self.test_series["System"],
+                                     "Agentsystem": self.test_series["Agentsystem"],
+                                     "Kommentar": self.rank_order,
+                                     "Size": self.size,
+                                     "Level": self.level,
+                                     "Lösungszeit (ms)": round(self.test_data_collection[self.csp_number]["duration"],
+                                                               2),
+                                     "check": self.data_collection.get("check", 0),
+                                     "domain_propagation": self.data_collection.get("domain_propagation", 0),
+                                     "backtrack": self.data_collection.get("backtrack", 0),
+                                     "backjump": self.data_collection.get("backjump", 0),
+                                     "possible": self.data_collection.get("possible", 0),
+                                     "forward_check": self.data_collection.get("forward_check", 0),
+                                     "good_forward_check": self.data_collection.get("good_forward_check", 0),
+                                     "bad_forward_check": self.data_collection.get("bad_forward_check", 0),
+                                     "confirm": self.data_collection.get("confirm", 0),
+                                     "Wertveränderungen": self.data_collection.get("solution_changed", 0),
+                                     "Initialisierungs-Nachrichten": (
+                                             self.data_collection.get("domain_propagation", 0) +
+                                             self.data_collection.get("possible", 0)),
+                                     "Lösungs-Nachrichten": (self.data_collection.get("confirm", 0) +
+                                                             self.data_collection.get("forward_check", 0) +
+                                                             self.data_collection.get("good_forward_check", 0) +
+                                                             self.data_collection.get("bad_forward_check", 0) +
+                                                             self.data_collection.get("backtrack", 0) +
+                                                             self.data_collection.get("backjump", 0) +
+                                                             self.data_collection.get("check", 0))}
+        detailed_test_series_data["Gesamtanzahl der Nachrichten"] = \
+            (detailed_test_series_data["Initialisierungs-Nachrichten"] +
+             detailed_test_series_data["Lösungs-Nachrichten"])
+        self.databank_manager.add_detailed_test_series(detailed_test_series_data)
+        self.test_data_collection["Gesamtanzahl der Nachrichten"] = (
+                self.test_data_collection.get("Gesamtanzahl der Nachrichten", 0) +
+                detailed_test_series_data["Gesamtanzahl der Nachrichten"])
+
+    def write_test_series(self):
+        self.test_series["Gesamt-Lösungszeit (ms)"] = round(self.test_data_collection.get("solution_time", 0), 2)
+        self.test_series["Gesamtanzahl der Nachrichten"] = self.test_data_collection.get("Gesamtanzahl der Nachrichten",
+                                                                                         0)
+        self.test_series["Durchschnittliche Lösungszeit (ms)"] = round(
+            self.test_series["Gesamt-Lösungszeit (ms)"] / self.test_data_collection["solution_count"], 2)
+        self.test_series["Durchschnittliche Anzahl der Nachrichten"] = round(
+            self.test_series["Gesamtanzahl der Nachrichten"] / self.test_data_collection["solution_count"], 2)
+        self.databank_manager.add_test_series(self.test_series)
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
@@ -63,6 +121,9 @@ class CA_Coordinator(Process):
             end_time = time.perf_counter() * 1000
             duration = end_time - self.solving_time
             print("Zeit für die Lösung:", duration, "ms")
+            self.test_data_collection["solution_time"] = self.test_data_collection.get("solution_time", 0) + duration
+            self.test_data_collection["solution_count"] = self.test_data_collection.get("solution_count", 0) + 1
+            self.test_data_collection[self.csp_number] = {"duration": duration, "solution": message["occupation"]}
             self.ask_data()
 
     def handle_data_collection(self, message):
@@ -73,11 +134,20 @@ class CA_Coordinator(Process):
         self.collected_data[message["sender"]] = True
         if all(self.collected_data.values()):
             print(f"Die Daten des CSP: {self.data_collection}")
+            self.test_data_collection[self.csp_number]["messages"] = self.data_collection
+            self.write_detailed_test_series()
             self.next_csp()
 
     def handle_start(self, message):
         print("Starting coordinator")
         self.number_of_csp = int(message["number_of_csp"])
+        self.test_series = message["test_series"]
+        self.test_series["Testreihe-ID"] = self.databank_manager.get_next_test_series_id()
+
+        initial_time = message["initial_time"]
+        self.test_series["Gesamt-Initialisierungszeit (ms)"] = round(initial_time, 2)
+        print(f"Initialisierungszeit: {self.test_series['Gesamt-Initialisierungszeit (ms)']} ms")
+
         self.next_csp()
 
     def handle_propagation(self, message):
@@ -100,14 +170,14 @@ class CA_Coordinator(Process):
 
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
+            self.update_all_solution_collection()
             self.data_collection = dict()
-            self.occupation = read_sudoku(self.csp_number + 1, self.size, self.level)
+            self.occupation = self.databank_manager.read_sudoku(number=self.csp_number + 1,
+                                                                size=self.size, level=self.level)
             self.status_dict = self.prepared_dict.copy()
             self.possibilities = self.prepared_dict.copy()
             self.collected_data = self.prepared_dict.copy()
             self.solving_time = time.perf_counter() * 1000
-            # self.occupation = {'a1': 2, 'a2': None, 'a3': None, 'a4': 1, 'b1': None, 'b2': 3, 'b3': None, 'b4': None,
-            #                    'c1': None, 'c2': None, 'c3': 4, 'c4': None, 'd1': None, 'd2': None, 'd3': None, 'd4': None}
             for connection in self.connections.keys():
                 if connection == "coordinator":
                     continue
@@ -116,9 +186,14 @@ class CA_Coordinator(Process):
                 self.send_message(self.connections[connection], "startagent", message)
             self.csp_number += 1
         else:
-            print("All CSPs solved")
+
             for connection in self.connections.keys():
                 self.send_message(self.connections[connection], "kill", {"sender": self.name})
+            print("All CSPs solved")
+            self.update_all_solution_collection()
+            print(f"Die Daten aller CSPs: {self.all_solution_collection}")
+            self.write_test_series()
+            self.databank_manager.save_dataframes()
             self.running = False
 
     def all_propagations_true(self):
@@ -134,7 +209,8 @@ class CA_Coordinator(Process):
         # print(ranking)
         if start is not None:
             self.send_message(self.connections[start], "start_solve", {"sender": self.name,
-                                                                 "ranking": ranking, "occupation": self.occupation})
+                                                                       "ranking": ranking,
+                                                                       "occupation": self.occupation})
         else:
             print("No start found")
 
@@ -182,6 +258,7 @@ class CA_Coordinator(Process):
                 if csp_id == self.csp_number:
                     self.receive_message(message["header"], message["message"])
 
+
 class ConstraintAgent(Process):
     def __init__(self, agent_id, variables, connections, constraint, *args, **kwargs):
         super(ConstraintAgent, self).__init__()
@@ -201,7 +278,6 @@ class ConstraintAgent(Process):
         self.forward_check_dic = None
         self.backjump_condition = True
         self.data_collection_dict = None
-
 
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
@@ -357,7 +433,7 @@ class ConstraintAgent(Process):
 
     def handle_ask_possibilities(self, message):
         self.send_message(self.connections["coordinator"], "possible", {"sender": self.agent_id,
-                                                              "possibilities": self.possibilities})
+                                                                        "possibilities": self.possibilities})
 
     def handle_check(self, message):
         self.check(message["occupation"], message)
@@ -397,8 +473,7 @@ class ConstraintAgent(Process):
                 message_new = message.copy()
                 message_new["occupation"] = self.remove_last_solution(message["occupation"])
                 self.send_message(self.connections[message["ranking"][self.agent_id]["lastSender"]],
-                              "backtrack", message_new)
-
+                                  "backtrack", message_new)
 
     def add_bad_combination(self, occupation):
         nogood_combination = dict()
@@ -484,7 +559,6 @@ class ConstraintAgent(Process):
             self.backjump_condition = True
             message["backjump"] = True
 
-
         find_solution = self.find_valid_solution(occupation)
         if self.forward_check_dic is None:
             self.forward_check_dic = self.prepare_forward_check_dic(message["ranking"])
@@ -533,4 +607,3 @@ class ConstraintAgent(Process):
             self.check(new_message["occupation"], new_message)
         else:
             self.send_message(self.connections[int(lastSender)], "backtrack", new_message)
-

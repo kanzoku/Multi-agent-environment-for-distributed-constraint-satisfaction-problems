@@ -1,7 +1,7 @@
 import json
 from multiprocessing import Process
 import time
-from UnitTest import read_sudoku
+from databank_manager import TestResultsManager
 import random
 
 
@@ -22,8 +22,13 @@ class HA_Coordinator(Process):
 
         self.data_collection = dict()
         self.collected_data = dict()
+        self.all_solution_collection = dict()
 
         self.solving_time = 0
+
+        self.test_series = None
+        self.databank_manager = TestResultsManager("datenbank.xlsx")
+        self.test_data_collection = dict()
 
         # Dictionary mit den Funktionen zur Behandlung von Nachrichten
         self.message_handlers = {
@@ -32,6 +37,47 @@ class HA_Coordinator(Process):
             "start": self.handle_start,
             "ask_data": self.handle_data_collection
         }
+
+    def update_all_solution_collection(self):
+        for key in self.data_collection.keys():
+            self.all_solution_collection[key] = self.all_solution_collection.get(key, 0) + self.data_collection[key]
+
+    def write_detailed_test_series(self):
+        detailed_test_series_data = {"Testreihe-ID": self.test_series["Testreihe-ID"],
+                                     "Lösung-ID": self.csp_number,
+                                     "System": self.test_series["System"],
+                                     "Agentsystem": self.test_series["Agentsystem"],
+                                     "Kommentar": "",
+                                     "Size": self.size,
+                                     "Level": self.level,
+                                     "Lösungszeit (ms)": round(self.test_data_collection[self.csp_number]["duration"],
+                                                               2),
+                                     "check": self.data_collection.get("check", 0),
+                                     "nogood": self.data_collection.get("nogood", 0),
+                                     "confirm": self.data_collection.get("confirm", 0),
+                                     "start_solving": 1,
+                                     "Wertveränderungen": self.data_collection.get("solution_changed", 0),
+                                     "Initialisierungs-Nachrichten": 1,
+                                     "Lösungs-Nachrichten": (self.data_collection.get("confirm", 0) +
+                                                             self.data_collection.get("check", 0) +
+                                                             self.data_collection.get("nogood", 0))}
+        detailed_test_series_data["Gesamtanzahl der Nachrichten"] = \
+            (detailed_test_series_data["Initialisierungs-Nachrichten"] +
+             detailed_test_series_data["Lösungs-Nachrichten"])
+        self.databank_manager.add_detailed_test_series(detailed_test_series_data)
+        self.test_data_collection["Gesamtanzahl der Nachrichten"] = (
+                self.test_data_collection.get("Gesamtanzahl der Nachrichten", 0) +
+                detailed_test_series_data["Gesamtanzahl der Nachrichten"])
+
+    def write_test_series(self):
+        self.test_series["Gesamt-Lösungszeit (ms)"] = round(self.test_data_collection.get("solution_time", 0), 2)
+        self.test_series["Gesamtanzahl der Nachrichten"] = self.test_data_collection.get("Gesamtanzahl der Nachrichten",
+                                                                                         0)
+        self.test_series["Durchschnittliche Lösungszeit (ms)"] = round(
+            self.test_series["Gesamt-Lösungszeit (ms)"] / self.test_data_collection["solution_count"], 2)
+        self.test_series["Durchschnittliche Anzahl der Nachrichten"] = round(
+            self.test_series["Gesamtanzahl der Nachrichten"] / self.test_data_collection["solution_count"], 2)
+        self.databank_manager.add_test_series(self.test_series)
 
     def prepare_dict(self):
         preparation_dict = dict()
@@ -64,9 +110,12 @@ class HA_Coordinator(Process):
 
     def next_csp(self):
         if self.csp_number < self.number_of_csp:
+            self.update_all_solution_collection()
             self.collected_data = self.prepare_dict()
             self.data_collection = dict()
-            occupation = read_sudoku(self.csp_number + 1, self.size, self.level)
+            occupation = self.databank_manager.read_sudoku(number=self.csp_number + 1,
+                                                           size=self.size, level=self.level)
+
             con_dict = self.fill_con_dict(occupation)
             self.occupation = occupation
             for connection in self.connections.keys():
@@ -81,7 +130,6 @@ class HA_Coordinator(Process):
                                "csp_number": self.csp_number + 1, "active": False}
                     self.send_message(self.connections[connection], "new_start", message)
 
-            print(f"Starting CSP {self.csp_number + 1}")
             self.solving_time = time.perf_counter() * 1000
             self.csp_number += 1
             for key in self.occupation:
@@ -90,10 +138,14 @@ class HA_Coordinator(Process):
                                       {"occupation": self.occupation, "sender": [], "identifier": []})
                     return
         else:
-            print("All CSPs solved.")
             for connection in self.connections.keys():
                 if connection != "coordinator":
                     self.send_message(self.connections[connection], "kill", {"kill": ""})
+            print("All CSPs solved.")
+            self.update_all_solution_collection()
+            print(f"Die Daten aller CSPs: {self.all_solution_collection}")
+            self.write_test_series()
+            self.databank_manager.save_dataframes()
             self.running = False
 
     def ask_data(self):
@@ -122,6 +174,9 @@ class HA_Coordinator(Process):
         end_time = time.perf_counter() * 1000
         duration = end_time - self.solving_time
         print("Zeit für die Lösung:", duration, "ms")
+        self.test_data_collection["solution_time"] = self.test_data_collection.get("solution_time", 0) + duration
+        self.test_data_collection["solution_count"] = self.test_data_collection.get("solution_count", 0) + 1
+        self.test_data_collection[self.csp_number] = {"duration": duration, "solution": message["occupation"]}
         self.ask_data()
 
     def handle_data_collection(self, message):
@@ -132,11 +187,20 @@ class HA_Coordinator(Process):
         self.collected_data[message["sender"]] = True
         if all(self.collected_data.values()):
             print(f"Die Daten des CSP: {self.data_collection}")
+            self.test_data_collection[self.csp_number]["messages"] = self.data_collection
+            self.write_detailed_test_series()
             self.next_csp()
 
     def handle_start(self, message):
         print("Starting coordinator")
         self.number_of_csp = int(message["number_of_csp"])
+        self.test_series = message["test_series"]
+        self.test_series["Testreihe-ID"] = self.databank_manager.get_next_test_series_id()
+
+        initial_time = message["initial_time"]
+        self.test_series["Gesamt-Initialisierungszeit (ms)"] = round(initial_time, 2)
+        print(f"Initialisierungszeit: {self.test_series['Gesamt-Initialisierungszeit (ms)']} ms")
+
         self.next_csp()
 
 

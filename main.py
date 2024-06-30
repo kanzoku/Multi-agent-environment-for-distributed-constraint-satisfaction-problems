@@ -5,6 +5,25 @@ from sudoku_problem import Sudoku_Problem
 from hierarchicalAgents import HA_Coordinator, HierarchicalAttributAgent
 from decentralizedAgents import DA_Coordinator, DecentralizedAttributAgent
 from constraintAgents import CA_Coordinator, ConstraintAgent
+from datetime import datetime
+
+
+def new_testseries(agentsystem, size, level, number_of_csp):
+    new_test_series = {
+        "Testreihe-ID": None,
+        "Datum": datetime.now().strftime("%d.%m.%Y"),
+        "System": multiprocessing.cpu_count(),
+        "Agentsystem": agentsystem,
+        "Size": size,
+        "Level": level,
+        "Anzahl der CSPs": number_of_csp,
+        "Gesamt-Initialisierungszeit (ms)": None,
+        "Gesamt-Lösungszeit (ms)": None,
+        "Gesamtanzahl der Nachrichten": None,
+        "Durchschnittliche Lösungszeit (ms)": None,
+        "Durchschnittliche Anzahl der Nachrichten": None,
+    }
+    return new_test_series
 
 
 def test_constraint(ranking_order, sudoku_size, sudoku_lvl, number_of_csp):
@@ -46,13 +65,14 @@ def test_constraint(ranking_order, sudoku_size, sudoku_lvl, number_of_csp):
         for agent in agents:
             agent.start()
 
+        initial_time = (time.perf_counter() * 1000) - start_time
+
         message = dict()
         message["number_of_csp"] = number_of_csp
+        message["test_series"] = new_testseries("constraint", sudoku_size, sudoku_lvl, number_of_csp)
+        message["initial_time"] = initial_time
         message_data = {"header": "start", "message": message}
         connections["coordinator"].put(("Start-Main", 0, message_data))
-        end_time = time.perf_counter() * 1000
-        duration = end_time - start_time
-        print("Zeit für die Initialisierung:", duration, "ms")
 
         for agent in agents:
             agent.join()
@@ -92,8 +112,7 @@ def test_decentralized(sudoku_size, sudoku_lvl, number_of_csp):
                 connections[variable] = manager.Queue()
 
         coordinator = DA_Coordinator(coordinator_queue=connections["coordinator"], connections=connections,
-                                     domains=all_domain_list, csp_numbers=number_of_csp, con_dict=con_dict,
-                                     level=sudoku_lvl,
+                                     domains=all_domain_list, con_dict=con_dict, level=sudoku_lvl,
                                      sudoku_size=sudoku_size)
         agents.append(coordinator)
 
@@ -110,10 +129,14 @@ def test_decentralized(sudoku_size, sudoku_lvl, number_of_csp):
             agent.start()
 
         end_time = time.perf_counter() * 1000
-        duration = end_time - start_time
-        print("Zeit für die Initialisierung:", duration, "ms")
+        initial_time = end_time - start_time
 
-        message_data = {"header": "start", "message": ""}
+
+        message = dict()
+        message["number_of_csp"] = number_of_csp
+        message["test_series"] = new_testseries("decentralized", sudoku_size, sudoku_lvl, number_of_csp)
+        message["initial_time"] = initial_time
+        message_data = {"header": "start", "message": message}
         connections["coordinator"].put(("Start-Main", 0, message_data))
 
         for agent in agents:
@@ -169,11 +192,12 @@ def test_hierarchy(sudoku_size, sudoku_lvl, number_of_csp):
             agent.start()
 
         end_time = time.perf_counter() * 1000
-        duration = end_time - start_time
-        print("Zeit für die Initialisierung:", duration, "ms")
+        initial_time = end_time - start_time
 
         message = dict()
         message["number_of_csp"] = number_of_csp
+        message["test_series"] = new_testseries("hierarchical", sudoku_size, sudoku_lvl, number_of_csp)
+        message["initial_time"] = initial_time
         message_data = {"header": "start", "message": message}
         connections["coordinator"].put(("Start-Main", 0, message_data))
 
@@ -201,8 +225,6 @@ def get_valid_int_input(prompt, min_value, max_value):
 
 
 if __name__ == "__main__":
-    cpu_count = multiprocessing.cpu_count()
-    print(f"Anzahl der verfügbaren CPUs: {cpu_count}")
     system_choice = get_valid_input("Wählen Sie das Agentsystem (constraint, decentralized, hierarchy): ",
                                     ["constraint", "decentralized", "hierarchy"])
     sudoku_size = get_valid_input("Wählen Sie die Größe (9x9 oder 4x4): ", ["9x9", "4x4"])

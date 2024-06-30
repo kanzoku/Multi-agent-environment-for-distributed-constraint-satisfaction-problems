@@ -1,13 +1,16 @@
 import pandas as pd
 from multiprocessing import Lock
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.workbook.workbook import Workbook
 
 
 class TestResultsManager:
-    def __init__(self, file_path, sudoku_file_path):
+    def __init__(self, file_path):
         self.file_path = file_path
-        self.sudoku_file_path = sudoku_file_path
-        self.sheet_name_overview = "Übersicht der Testreihen"
-        self.sheet_name_detailed = "Detaillierte Ergebnisse"
+        self.sheet_name_overview = "Übersicht"
+        self.sheet_name_detailed = "Ergebnisse"
         self.lock = Lock()
         self.df_test_series, self.df_detailed_test_series = self.load_dataframes()
 
@@ -18,9 +21,34 @@ class TestResultsManager:
 
     def save_dataframes(self):
         with self.lock:
-            with pd.ExcelWriter(self.file_path, engine="openpyxl") as writer:
-                self.df_test_series.to_excel(writer, sheet_name=self.sheet_name_overview, index=False)
-                self.df_detailed_test_series.to_excel(writer, sheet_name=self.sheet_name_detailed, index=False)
+            # Laden Sie das bestehende Workbook
+            workbook = load_workbook(self.file_path)
+
+            # Funktion zum Überschreiben eines Sheets mit einem DataFrame
+            def overwrite_sheet(sheet: Worksheet, dataframe: pd.DataFrame):
+                dataframe = dataframe.astype(str).replace('None', '').replace({None: ''})
+                for row in sheet.iter_rows():
+                    for cell in row:
+                        cell.value = None  # Clear all existing cells
+                for r_idx, row in enumerate(dataframe_to_rows(dataframe, index=False, header=True), 1):
+                    for c_idx, value in enumerate(row, 1):
+                        sheet.cell(row=r_idx, column=c_idx, value=value)
+
+            # Überschreiben Sie die Sheets oder erstellen Sie sie, falls sie nicht existieren
+            if self.sheet_name_overview in workbook.sheetnames:
+                sheet_overview = workbook[self.sheet_name_overview]
+            else:
+                sheet_overview = workbook.create_sheet(title=self.sheet_name_overview)
+            overwrite_sheet(sheet_overview, self.df_test_series)
+
+            if self.sheet_name_detailed in workbook.sheetnames:
+                sheet_detailed = workbook[self.sheet_name_detailed]
+            else:
+                sheet_detailed = workbook.create_sheet(title=self.sheet_name_detailed)
+            overwrite_sheet(sheet_detailed, self.df_detailed_test_series)
+
+            # Speichern Sie das Workbook
+            workbook.save(self.file_path)
         print("Daten erfolgreich aktualisiert und gespeichert.")
 
     def add_test_series(self, data):
@@ -77,7 +105,7 @@ class TestResultsManager:
 
     def read_sudoku(self, number, size, level):
         row_number = number + ((level - 1) * 100)
-        occupation_dict = self.read_sudoku_to_dict(self.sudoku_file_path, size, row_number)
+        occupation_dict = self.read_sudoku_to_dict(self.file_path, size, row_number)
         print(f"Das Sudoku in Zeile {row_number + 1} wurde erfolgreich eingelesen.")
         print(occupation_dict)
         return occupation_dict

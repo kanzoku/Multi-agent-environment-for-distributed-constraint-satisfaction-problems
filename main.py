@@ -265,6 +265,7 @@ def test_hierarchy(sudoku_size, sudoku_lvl, number_of_csp):
         message["test_series"] = new_testseries("hierarchical", sudoku_size, sudoku_lvl, number_of_csp)
         message["initial_time"] = initial_time
         message_data = {"header": "start", "message": message}
+        time.sleep(3)
         connections["coordinator"].put(("Start-Main", 0, message_data))
 
         for agent in agents:

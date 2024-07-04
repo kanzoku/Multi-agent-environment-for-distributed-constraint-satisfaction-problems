@@ -5,6 +5,7 @@ from sudoku_problem import Sudoku_Problem
 from hierarchicalAgents import HA_Coordinator, HierarchicalAttributAgent
 from decentralizedAgents import DA_Coordinator, DecentralizedAttributAgent
 from constraintAgents import CA_Coordinator, ConstraintAgent
+from combinedAgents import ManagerAgent, SolverAgent, C_Coordinator
 from datetime import datetime
 
 
@@ -24,6 +25,71 @@ def new_testseries(agentsystem, size, level, number_of_csp):
         "Durchschnittliche Anzahl der Nachrichten": None,
     }
     return new_test_series
+
+
+def test_combined(ranking_order, sudoku_size, sudoku_lvl, number_of_csp):
+    start_time = time.perf_counter() * 1000
+    multiprocessing.set_start_method('spawn', force=True)
+    agents = []
+    if sudoku_size == "9x9":
+        n = 9
+    elif sudoku_size == "4x4":
+        n = 4
+    else:
+        return
+    all_domain_list = list(range(1, n + 1))
+
+    with Manager() as manager:
+        problem = Sudoku_Problem(n, n_ary=True, conflict=False)
+
+        connections = dict()
+        coordinator_q = manager.Queue()
+        solver_q = manager.Queue()
+        i = 1
+        for constraint in problem.constraints[-n:]:
+            connections[i] = manager.Queue()
+            i += 1
+
+        coordinator = C_Coordinator(coordinator_queue=coordinator_q,
+                                    manager_connections=connections,
+                                    solver_connection=solver_q,
+                                    level=sudoku_lvl,
+                                    sudoku_size=sudoku_size,
+                                    rank=ranking_order)
+        agents.append(coordinator)
+
+        solver_agent = SolverAgent(agent_id=1,
+                                   connections=connections,
+                                   constraints=problem.constraints,
+                                   order=ranking_order,
+                                   coordinator=coordinator_q,
+                                   solver_queue=solver_q)
+        agents.append(solver_agent)
+        i = 1
+        for constraint, variables in problem.constraints[-n:]:
+            agent = ManagerAgent(agent_id=i,
+                                 variables=variables,
+                                 connections=connections,
+                                 solver=solver_q,
+                                 domains=all_domain_list,
+                                 coordinator=coordinator_q)
+            agents.append(agent)
+            i += 1
+
+        for agent in agents:
+            agent.start()
+
+        initial_time = (time.perf_counter() * 1000) - start_time
+
+        message = dict()
+        message["number_of_csp"] = number_of_csp
+        message["test_series"] = new_testseries("combined", sudoku_size, sudoku_lvl, number_of_csp)
+        message["initial_time"] = initial_time
+        message_data = {"header": "start", "message": message}
+        coordinator_q.put(("Start-Main", 0, message_data))
+
+        for agent in agents:
+            agent.join()
 
 
 def test_constraint(ranking_order, sudoku_size, sudoku_lvl, number_of_csp):
@@ -225,8 +291,8 @@ def get_valid_int_input(prompt, min_value, max_value):
 
 
 if __name__ == "__main__":
-    system_choice = get_valid_input("Wählen Sie das Agentsystem (constraint, decentralized, hierarchy): ",
-                                    ["constraint", "decentralized", "hierarchy"])
+    system_choice = get_valid_input("Wählen Sie das Agentsystem (constraint, decentralized, hierarchy, combined): ",
+                                    ["constraint", "decentralized", "hierarchy", "combined"])
     sudoku_size = get_valid_input("Wählen Sie die Größe (9x9 oder 4x4): ", ["9x9", "4x4"])
 
     if sudoku_size == "4x4":
@@ -248,5 +314,9 @@ if __name__ == "__main__":
         test_decentralized(sudoku_size, sudoku_lvl, number_of_csp)
     elif system_choice == "hierarchy":
         test_hierarchy(sudoku_size, sudoku_lvl, number_of_csp)
+    elif system_choice == "combined":
+        ranking_order = get_valid_input("Geben Sie die Rangfolge an (asc, desc oder random): ",
+                                        ["asc", "desc", "random"])
+        test_combined(ranking_order, sudoku_size, sudoku_lvl, number_of_csp)
     else:
         print("Ungültiges Agentsystem ausgewählt.")

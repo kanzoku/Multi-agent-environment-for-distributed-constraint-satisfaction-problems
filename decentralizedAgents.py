@@ -167,6 +167,8 @@ class DA_Coordinator(Process):
             self.data_collection.clear()
             self.occupation = self.databank_manager.read_sudoku(number=self.csp_number + 1,
                                                                 size=self.size, level=self.level)
+            if self.csp_number == 0:
+                time.sleep(1)
             self.solving_time = time.perf_counter() * 1000
             for connection in self.connections.keys():
                 message = {"domains": self.domains, "occupation": self.occupation,

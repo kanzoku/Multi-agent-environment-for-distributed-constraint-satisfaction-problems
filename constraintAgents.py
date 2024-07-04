@@ -177,6 +177,8 @@ class CA_Coordinator(Process):
             self.status_dict = self.prepared_dict.copy()
             self.possibilities = self.prepared_dict.copy()
             self.collected_data = self.prepared_dict.copy()
+            if self.csp_number == 0:
+                time.sleep(1)
             self.solving_time = time.perf_counter() * 1000
             for connection in self.connections.keys():
                 if connection == "coordinator":
@@ -201,7 +203,6 @@ class CA_Coordinator(Process):
             if connection == "coordinator":
                 continue
             self.send_message(self.connections[connection], "ask_possibilities", {"sender": self.name})
-        pass
 
     def solve(self):
         print("Solving")

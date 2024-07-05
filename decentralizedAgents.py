@@ -25,6 +25,7 @@ class DA_Coordinator(Process):
         self.filter = True
 
         self.solving_time = 0
+        self.solving_stop_trigger = True
 
         self.test_series = None
         self.databank_manager = TestResultsManager("datenbank.xlsx")
@@ -43,30 +44,60 @@ class DA_Coordinator(Process):
             self.all_solution_collection[key] = self.all_solution_collection.get(key, 0) + self.data_collection[key]
 
     def write_detailed_test_series(self):
-        detailed_test_series_data = {"Testreihe-ID": self.test_series["Testreihe-ID"],
-                                     "Lösung-ID": self.csp_number,
-                                     "System": self.test_series["System"],
-                                     "Agentsystem": self.test_series["Agentsystem"],
-                                     "Kommentar": "",
-                                     "Size": self.size,
-                                     "Level": self.level,
-                                     "Lösungszeit (ms)": round(self.test_data_collection[self.csp_number]["duration"],
-                                                               2),
-                                     "check": self.data_collection.get("check", 0),
-                                     "must_be": self.data_collection.get("must_be", 0),
-                                     "backtrack": self.data_collection.get("backtrack", 0),
-                                     "good": self.data_collection.get("good", 0),
-                                     "nogood": self.data_collection.get("nogood", 0),
-                                     "unconfirm": self.data_collection.get("bad_forward_check", 0),
-                                     "confirm": self.data_collection.get("confirm", 0),
-                                     "Wertveränderungen": self.data_collection.get("solution_changed", 0),
-                                     "Initialisierungs-Nachrichten": (self.data_collection.get("must_be", 0)),
-                                     "Lösungs-Nachrichten": (self.data_collection.get("confirm", 0) +
-                                                             self.data_collection.get("unconfirm", 0) +
-                                                             self.data_collection.get("good", 0) +
-                                                             self.data_collection.get("nogood", 0) +
-                                                             self.data_collection.get("backtrack", 0) +
-                                                             self.data_collection.get("check", 0))}
+        if self.solving_stop_trigger:
+            detailed_test_series_data = {"Testreihe-ID": self.test_series["Testreihe-ID"],
+                                         "Lösung-ID": self.csp_number,
+                                         "System": self.test_series["System"],
+                                         "Agentsystem": self.test_series["Agentsystem"],
+                                         "Kommentar": "",
+                                         "Size": self.size,
+                                         "Level": self.level,
+                                         "Lösungszeit (ms)": round(
+                                             self.test_data_collection[self.csp_number]["duration"],
+                                             2),
+                                         "Erfolg": "Nein",
+                                         "check": self.data_collection.get("check", 0),
+                                         "must_be": self.data_collection.get("must_be", 0),
+                                         "backtrack": self.data_collection.get("backtrack", 0),
+                                         "good": self.data_collection.get("good", 0),
+                                         "nogood": self.data_collection.get("nogood", 0),
+                                         "unconfirm": self.data_collection.get("bad_forward_check", 0),
+                                         "confirm": self.data_collection.get("confirm", 0),
+                                         "Wertveränderungen": self.data_collection.get("solution_changed", 0),
+                                         "Initialisierungs-Nachrichten": (self.data_collection.get("must_be", 0)),
+                                         "Lösungs-Nachrichten": (self.data_collection.get("confirm", 0) +
+                                                                 self.data_collection.get("unconfirm", 0) +
+                                                                 self.data_collection.get("good", 0) +
+                                                                 self.data_collection.get("nogood", 0) +
+                                                                 self.data_collection.get("backtrack", 0) +
+                                                                 self.data_collection.get("check", 0))}
+        else:
+            detailed_test_series_data = {"Testreihe-ID": self.test_series["Testreihe-ID"],
+                                         "Lösung-ID": self.csp_number,
+                                         "System": self.test_series["System"],
+                                         "Agentsystem": self.test_series["Agentsystem"],
+                                         "Kommentar": "",
+                                         "Size": self.size,
+                                         "Level": self.level,
+                                         "Lösungszeit (ms)": round(
+                                             self.test_data_collection[self.csp_number]["duration"],
+                                             2),
+                                         "Erfolg": "Ja",
+                                         "check": self.data_collection.get("check", 0),
+                                         "must_be": self.data_collection.get("must_be", 0),
+                                         "backtrack": self.data_collection.get("backtrack", 0),
+                                         "good": self.data_collection.get("good", 0),
+                                         "nogood": self.data_collection.get("nogood", 0),
+                                         "unconfirm": self.data_collection.get("bad_forward_check", 0),
+                                         "confirm": self.data_collection.get("confirm", 0),
+                                         "Wertveränderungen": self.data_collection.get("solution_changed", 0),
+                                         "Initialisierungs-Nachrichten": (self.data_collection.get("must_be", 0)),
+                                         "Lösungs-Nachrichten": (self.data_collection.get("confirm", 0) +
+                                                                 self.data_collection.get("unconfirm", 0) +
+                                                                 self.data_collection.get("good", 0) +
+                                                                 self.data_collection.get("nogood", 0) +
+                                                                 self.data_collection.get("backtrack", 0) +
+                                                                 self.data_collection.get("check", 0))}
         detailed_test_series_data["Gesamtanzahl der Nachrichten"] = \
             (detailed_test_series_data["Initialisierungs-Nachrichten"] +
              detailed_test_series_data["Lösungs-Nachrichten"])
@@ -142,6 +173,7 @@ class DA_Coordinator(Process):
 
     def handle_start(self, message):
         print("Starting coordinator")
+
         self.number_of_csp = int(message["number_of_csp"])
         self.test_series = message["test_series"]
         self.test_series["Testreihe-ID"] = self.databank_manager.get_next_test_series_id()
@@ -170,6 +202,7 @@ class DA_Coordinator(Process):
             if self.csp_number == 0:
                 time.sleep(1)
             self.solving_time = time.perf_counter() * 1000
+            self.solving_stop_trigger = False
             for connection in self.connections.keys():
                 message = {"domains": self.domains, "occupation": self.occupation,
                            "csp_number": self.csp_number + 1}
@@ -188,6 +221,20 @@ class DA_Coordinator(Process):
 
     def run(self):
         while self.running:
+            if not self.solving_stop_trigger:
+                end_time = time.perf_counter() * 1000
+                duration = end_time - self.solving_time
+                if duration > 180000:
+                    print("Solving time exceeded")
+                    self.solving_stop_trigger = True
+                    for connection in self.connections.keys():
+                        if connection == "coordinator":
+                            continue
+                        self.send_message(self.connections[connection], "time_exceeded", {"sender": self.name})
+                    self.test_data_collection["solution_time"] = duration
+                    self.test_data_collection["solution_count"] = self.test_data_collection.get("solution_count", 0) + 1
+                    self.test_data_collection[self.csp_number] = {"duration": duration, "solution": None}
+                    self.ask_data()
             if not self.coordinator_queue.empty():
                 sender, csp_id, message_data = self.coordinator_queue.get()
                 if csp_id == self.csp_number:
@@ -228,7 +275,8 @@ class DecentralizedAttributAgent(Process):
             "nogood": self.handle_nogood,
             "kill": self.handle_stop,
             "startagent": self.handle_startagent,
-            "ask_data": self.handle_data_collection
+            "ask_data": self.handle_data_collection,
+            "time_exceeded": self.handle_time_exceeded
         }
 
     # Erstellt ein Dictionary für die Vorbereitung des Agenten-Views
@@ -237,6 +285,16 @@ class DecentralizedAttributAgent(Process):
         for connection in self.constraints.keys():
             prepared_dict[connection] = False
         return prepared_dict
+
+    def handle_time_exceeded(self, message):
+        while not self.task_queue.empty():
+            sender, csp_id, message_data = self.task_queue.get()
+            header = message_data["header"]
+            if header == "ask_data":
+                self.handle_data_collection(message_data["message"])
+            elif header == "startagent":
+                self.handle_startagent(message_data["message"])
+                break
 
     def get_nogood_value_for_backtrack(self):
         if len(self.nogood_set - self.backtrack_set) == 0:

@@ -20,6 +20,7 @@ class CA_Coordinator(Process):
         self.csp_number = 0
         self.number_of_csp = 0
         self.solving_time = 0
+        self.solving_stop_trigger = True
 
         self.data_collection = dict()
         self.all_solution_collection = dict()
@@ -62,8 +63,6 @@ class CA_Coordinator(Process):
                                      "Kommentar": self.rank_order,
                                      "Size": self.size,
                                      "Level": self.level,
-                                     "Lösungszeit (ms)": round(self.test_data_collection[self.csp_number]["duration"],
-                                                               2),
                                      "check": self.data_collection.get("check", 0),
                                      "domain_propagation": self.data_collection.get("domain_propagation", 0),
                                      "backtrack": self.data_collection.get("backtrack", 0),
@@ -84,6 +83,14 @@ class CA_Coordinator(Process):
                                                              self.data_collection.get("backtrack", 0) +
                                                              self.data_collection.get("backjump", 0) +
                                                              self.data_collection.get("check", 0))}
+        if self.solving_stop_trigger:
+            detailed_test_series_data["Lösungszeit (ms)"] = 180000
+            detailed_test_series_data["Erfolg"] = "Nein"
+        else:
+            detailed_test_series_data["Erfolg"] = "Ja"
+            detailed_test_series_data["Lösungszeit (ms)"] = round(self.test_data_collection[self.csp_number]["duration"],
+                                                               2)
+
         detailed_test_series_data["Gesamtanzahl der Nachrichten"] = \
             (detailed_test_series_data["Initialisierungs-Nachrichten"] +
              detailed_test_series_data["Lösungs-Nachrichten"])
@@ -116,6 +123,8 @@ class CA_Coordinator(Process):
             print(f"{self.name} received unknown message type: {header} with message: {message}")
 
     def handle_confirm(self, message):
+        if self.solving_stop_trigger:
+            return
         if all([value is not None for value in message["occupation"].values()]):
             print(f"Solution found: {message['occupation']}")
             end_time = time.perf_counter() * 1000
@@ -180,6 +189,7 @@ class CA_Coordinator(Process):
             if self.csp_number == 0:
                 time.sleep(1)
             self.solving_time = time.perf_counter() * 1000
+            self.solving_stop_trigger = False
             for connection in self.connections.keys():
                 if connection == "coordinator":
                     continue
@@ -254,6 +264,20 @@ class CA_Coordinator(Process):
 
     def run(self):
         while self.running:
+            if not self.solving_stop_trigger:
+                end_time = time.perf_counter() * 1000
+                duration = end_time - self.solving_time
+                if duration > 180000:
+                    print("Solving time exceeded")
+                    self.solving_stop_trigger = True
+                    for connection in self.connections.keys():
+                        if connection == "coordinator":
+                            continue
+                        self.send_message(self.connections[connection], "time_exceeded", {"sender": self.name})
+                    self.test_data_collection["solution_time"] = duration
+                    self.test_data_collection["solution_count"] = self.test_data_collection.get("solution_count", 0) + 1
+                    self.test_data_collection[self.csp_number] = {"duration": duration, "solution": None}
+                    self.ask_data()
             if not self.coordinator_queue.empty():
                 sender, csp_id, message = self.coordinator_queue.get()
                 if csp_id == self.csp_number:
@@ -293,8 +317,19 @@ class ConstraintAgent(Process):
             "forward_check": self.handle_forward_check,
             "good_forward_check": self.handle_good_forward_check,
             "bad_forward_check": self.handle_bad_forward_check,
-            "ask_data": self.handle_data_collection
+            "ask_data": self.handle_data_collection,
+            "time_exceeded": self.handle_time_exceeded
         }
+
+    def handle_time_exceeded(self, message):
+        while not self.task_queue.empty():
+            sender, csp_id, message_data = self.task_queue.get()
+            header = message_data["header"]
+            if header == "ask_data":
+                self.handle_data_collection(message_data["message"])
+            elif header == "startagent":
+                self.handle_startagent(message_data["message"])
+                break
 
     def prepare_forward_check_dic(self, ranking):
         preparation_dict = dict()

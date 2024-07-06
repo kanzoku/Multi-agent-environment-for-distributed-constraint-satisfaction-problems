@@ -140,6 +140,8 @@ class DA_Coordinator(Process):
     def handle_confirm(self, message):
         if not self.filter:
             return
+        if self.solving_stop_trigger:
+            return
         self.occupation[message["sender"]] = message["value"]
         # print(f"Confirmed: {message['sender']} with value {message['value']}")
         if all([value is not None for value in self.occupation.values()]):

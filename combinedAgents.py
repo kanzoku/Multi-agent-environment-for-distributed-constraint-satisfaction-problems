@@ -170,6 +170,8 @@ class C_Coordinator(Process):
         return preparation_dict
 
     def handle_solved(self, message):
+        if self.solving_stop_trigger:
+            return
         print(f"Solution found: {message['occupation']}")
         duration = time.perf_counter() * 1000 - self.solving_time
         print("Zeit für die Lösung:", duration, "ms")
@@ -377,6 +379,7 @@ class SolverAgent(Process):
         return new_occupation
 
     def handle_solve(self, message):
+        self.data_collection_dict = dict()
         new_message = dict()
         new_message["occupation"] = message["occupation"]
         new_message["csp_number"] = message["csp_number"]

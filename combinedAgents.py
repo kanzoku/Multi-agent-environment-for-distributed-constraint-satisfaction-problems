@@ -22,6 +22,7 @@ class C_Coordinator(Process):
         self.csp_number = 0
         self.number_of_csp = 0
         self.solving_time = 0
+        self.solving_stop_trigger = True
 
         self.test_series = None
         self.databank_manager = TestResultsManager("datenbank.xlsx")
@@ -53,6 +54,21 @@ class C_Coordinator(Process):
 
     def run(self):
         while self.running:
+            if not self.solving_stop_trigger:
+                end_time = time.perf_counter() * 1000
+                duration = end_time - self.solving_time
+                if duration > 180000:
+                    print("Solving time exceeded")
+                    self.solving_stop_trigger = True
+                    for connection in self.manager_connections.keys():
+                        if connection == "coordinator":
+                            continue
+                        self.send_message(self.manager_connections[connection], "time_exceeded", {"sender": self.name})
+                    self.send_message(self.solver_connection, "time_exceeded", {"sender": self.name})
+                    self.test_data_collection["solution_time"] = duration
+                    self.test_data_collection["solution_count"] = self.test_data_collection.get("solution_count", 0) + 1
+                    self.test_data_collection[self.csp_number] = {"duration": duration, "solution": None}
+                    self.ask_data()
             if not self.coordinator_queue.empty():
                 sender, csp_id, message = self.coordinator_queue.get()
                 if csp_id == self.csp_number:
@@ -66,8 +82,6 @@ class C_Coordinator(Process):
                                      "Kommentar": self.rank_order,
                                      "Size": self.size,
                                      "Level": self.level,
-                                     "Lösungszeit (ms)": round(self.test_data_collection[self.csp_number]["duration"],
-                                                               2),
                                      "check": self.data_collection.get("check", 0),
                                      "domain_propagation": self.data_collection.get("domain_propagation", 0),
                                      "not_allowed": self.data_collection.get("not_allowed", 0),
@@ -88,6 +102,14 @@ class C_Coordinator(Process):
                                                              self.data_collection.get("bad_forward_check", 0) +
                                                              self.data_collection.get("backtrack", 0) +
                                                              self.data_collection.get("check", 0))}
+        if self.solving_stop_trigger:
+            detailed_test_series_data["Lösungszeit (ms)"] = 180000
+            detailed_test_series_data["Erfolg"] = "Nein"
+        else:
+            detailed_test_series_data["Erfolg"] = "Ja"
+            detailed_test_series_data["Lösungszeit (ms)"] = round(self.test_data_collection[self.csp_number]["duration"],
+                                                               2)
+
         detailed_test_series_data["Gesamtanzahl der Nachrichten"] = \
             (detailed_test_series_data["Initialisierungs-Nachrichten"] +
              detailed_test_series_data["Lösungs-Nachrichten"])
@@ -115,6 +137,7 @@ class C_Coordinator(Process):
             if self.csp_number == 0:
                 time.sleep(1)
             self.solving_time = time.perf_counter() * 1000
+            self.solving_stop_trigger = False
             message = {"occupation": occupation, "csp_number": self.csp_number + 1}
             self.send_message(self.solver_connection, "solve", message)
             self.csp_number += 1
@@ -224,7 +247,18 @@ class SolverAgent(Process):
             "bad_forward_check": self.handle_bad_forward_check,
             "good_forward_check": self.handle_good_forward_check,
             "ask_data": self.handle_data_collection,
+            "time_exceeded": self.handle_time_exceeded
         }
+
+    def handle_time_exceeded(self, message):
+        while not self.own_queue.empty():
+            sender, csp_id, message_data = self.own_queue.get()
+            header = message_data["header"]
+            if header == "ask_data":
+                self.handle_data_collection(message_data["message"])
+            elif header == "solve":
+                self.handle_solve(message_data["message"])
+                break
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
@@ -435,7 +469,18 @@ class ManagerAgent(Process):
             "ask_data": self.handle_data_collection,
             "nogood": self.handle_nogood,
             "check": self.handle_check,
+            "time_exceeded": self.handle_time_exceeded
         }
+
+    def handle_time_exceeded(self, message):
+        while not self.own_queue.empty():
+            sender, csp_id, message_data = self.own_queue.get()
+            header = message_data["header"]
+            if header == "ask_data":
+                self.handle_data_collection(message_data["message"])
+            elif header == "startagent":
+                self.handle_startagent(message_data["message"])
+                break
 
     def create_row_col_dict(self, variables):
         row_col_dict = {}

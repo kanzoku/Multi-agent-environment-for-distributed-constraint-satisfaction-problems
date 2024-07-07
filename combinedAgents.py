@@ -240,6 +240,8 @@ class SolverAgent(Process):
         self.forward_check_dict = None
         self.forward_check_sender = None
 
+        self.trigger = False
+
         self.message_handlers = {
             "solve": self.handle_solve,
             "kill": self.handle_kill,
@@ -253,14 +255,15 @@ class SolverAgent(Process):
         }
 
     def handle_time_exceeded(self, message):
-        while not self.own_queue.empty():
-            sender, csp_id, message_data = self.own_queue.get()
-            header = message_data["header"]
-            if header == "ask_data":
-                self.handle_data_collection(message_data["message"])
-            elif header == "solve":
-                self.handle_solve(message_data["message"])
-                break
+        while self.running:
+            if not self.own_queue.empty():
+                sender, csp_id, message_data = self.own_queue.get()
+                header = message_data["header"]
+                if header == "ask_data":
+                    self.handle_data_collection(message_data["message"])
+                elif header == "solve":
+                    self.handle_solve(message_data["message"])
+                    break
 
     def send_message(self, recipient_queue, header, message):
         # Sendet Nachrichten an andere Agenten
@@ -280,7 +283,8 @@ class SolverAgent(Process):
         while self.running:
             if not self.own_queue.empty():
                 sender, csp_id, message = self.own_queue.get()
-                self.receive_message(message["header"], message["message"])
+                if self.csp_number == csp_id:
+                    self.receive_message(message["header"], message["message"])
 
     def solver(self, occupation):
         for constraint, variables in self.constraints:
@@ -322,6 +326,11 @@ class SolverAgent(Process):
         sender = message["sender"]
         last_sender = self.ranking_order[sender]["lastSender"]
         next_sender = self.ranking_order[sender]["nextSender"]
+
+        # # Debugging-Ausgabe
+        # print(f"Handling message from sender: {sender}, last_sender: {last_sender}, next_sender: {next_sender}")
+        # print(f"Current occupation keys: {self.occupation.keys()}")
+
         if message["found_solution"]:
             self.occupation[sender] = self.add_selected_values(self.occupation[last_sender], message["selected_values"])
             if self.solver(self.occupation[sender]):

@@ -3,26 +3,21 @@ import matplotlib.pyplot as plt
 import os
 import re
 
-# Excel-Datei laden
-file_path = 'datenbank.xlsx'  # Pfad zu deiner Excel-Datei
-sheet_name = 'Übersicht'  # Name des neuen Arbeitsblatts
+file_path = 'datenbank.xlsx'
+sheet_name = 'Übersicht'
 
-# Daten aus der Excel-Datei laden
 data = pd.read_excel(file_path, sheet_name=sheet_name)
 
-# Systeme und Agentensysteme aus den Daten extrahieren
-data['System'] = data['System'].astype(str)  # Systeme als Strings behandeln
-systeme = sorted(data['System'].unique(), key=int)  # Systeme sortieren
+data['System'] = data['System'].astype(str)
+systeme = sorted(data['System'].unique(), key=int)
 agentensysteme = data['Agentsystem'].unique()
-sizes = data['Size'].unique()  # Größen extrahieren
+sizes = data['Size'].unique()
 
-# Ordner für die gespeicherten Plots
 output_folder = 'W:\\data\\03_Studium\\Bachelorarbeit\\Grafiken\\Plots'
 os.makedirs(output_folder, exist_ok=True)
 
 
 def sanitize_filename(title):
-    # Ersetze Umlaute
     umlaut_map = str.maketrans({
         'ä': 'ae',
         'ö': 'oe',
@@ -33,80 +28,83 @@ def sanitize_filename(title):
         'ß': 'ss'
     })
     title = title.translate(umlaut_map)
-    # Ersetze ungültige Zeichen im Dateinamen durch Unterstriche
     title = re.sub(r'[^a-zA-Z0-9_\-]', '_', title)
     return title
 
 
-# Mapping der Agentensystem-Namen
 agentensystem_titel_map = {
-    'constraint': 'Problemorientierte Architektur',
-    'decentralized': 'Dezentrale Architektur',
-    'hierarchical': 'Hierarchische Architektur',
-    'combined': 'Spezialisierte Architektur'
+    'constraint': 'Problem-oriented Architecture',
+    'decentralized': 'Decentralized Architecture',
+    'hierarchical': 'Hierarchical Architecture',
+    'combined': 'Specialized Architecture'
+}
+
+color_map = {
+    'Problem-oriented Architecture': 'blue',
+    'Decentralized Architecture': 'green',
+    'Hierarchical Architecture': 'red',
+    'Specialized Architecture': 'orange'
 }
 
 
-def create_and_save_plots(data, systeme, agentensysteme, sizes, output_folder, agentensystem_titel_map):
-    for size in sizes:
-        # Systeme filtern, falls Größe 9x9 ist und System 2 ausgeschlossen werden soll
-        if size == '9x9':
-            filtered_systeme = sorted([system for system in systeme if system != '2'], key=int)
-        else:
-            filtered_systeme = sorted(systeme, key=int)
+def create_and_save_combined_plot(data, systeme, agentensysteme, size, output_folder, agentensystem_titel_map):
+    if size == '9x9':
+        filtered_systeme = sorted([system for system in systeme if system != '2'], key=int)
+    elif size == '4x4':
+        filtered_systeme = sorted(systeme, key=int)
+    else:
+        filtered_systeme = sorted(systeme, key=int)
 
-        for agentensystem in agentensysteme:
-            data_filtered = data[(data['Agentsystem'] == agentensystem) & (data['Size'] == size)]
+    data_filtered = data[data['Size'] == size]
 
-            # Debugging-Ausgaben
-            print(f"Agentensystem: {agentensystem}, Größe: {size}")
-            print(f"Gefilterte Daten: {data_filtered}")
+    if data_filtered.empty:
+        print(f"No data for size {size}")
+        return
 
-            # Überprüfen, ob gefilterte Daten vorhanden sind
-            if data_filtered.empty:
-                print(f"Keine Daten für {agentensystem} mit Größe {size}")
-                continue
+    bar_width = 0.2
+    inter_bar_width = 0.05
+    group_width = (bar_width + inter_bar_width) * len(agentensysteme)
+    index = [i * (group_width + 0.3) for i in range(len(filtered_systeme))]
 
-            # Balkendiagramm erstellen
-            means = []
-            for system in filtered_systeme:
-                system_data = data_filtered[data_filtered['System'] == system]['Gesamt-Initialisierungszeit (ms)']
-                mean_value = system_data.mean()
-                means.append(mean_value)
-                print(f"System: {system}, Mittelwert: {mean_value}")
+    plt.figure(figsize=(12, 8))
 
-            # Debugging-Ausgaben für Mittelwerte
-            print(f"Systeme: {filtered_systeme}")
-            print(f"Mittelwerte: {means}")
+    for i, agentensystem in enumerate(agentensysteme):
+        means = []
+        for system in filtered_systeme:
+            system_data = data_filtered[
+                (data_filtered['System'] == system) & (data_filtered['Agentsystem'] == agentensystem)
+            ]['Gesamt-Initialisierungszeit (ms)']
+            mean_value = system_data.mean()
+            means.append(mean_value)
 
-            # Überprüfen, ob alle Mittelwerte NaN sind
-            if all(pd.isna(means)):
-                print(f"Keine gültigen Mittelwerte für {agentensystem} mit Größe {size}")
-                continue
+        plt.bar(
+            [x + i * (bar_width + inter_bar_width) for x in index],
+            means,
+            width=bar_width,
+            color=color_map[agentensystem_titel_map.get(agentensystem, agentensystem)],
+            label=agentensystem_titel_map.get(agentensystem, agentensystem)
+        )
 
-            plt.figure(figsize=(12, 8))
-            plt.bar(filtered_systeme, means)
+    plt.xlabel('System', fontsize=18)
+    plt.ylabel('Average Initialization Time (ms)', fontsize=18)
+    plt.title(f'Average Initialization Time for Different Architectures ({size})', fontsize=20)
+    plt.xticks([x + (bar_width + inter_bar_width) * (len(agentensysteme) / 2) for x in index],
+               [f"{system} Core" for system in filtered_systeme], fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.legend(fontsize=16)
 
-            # Achsenbeschriftungen und Titel
-            agentensystem_title = agentensystem_titel_map.get(agentensystem, agentensystem)
-            title = f'Durchschnittliche Initialisierungszeit für {agentensystem_title} ({size})'
-            plt.xlabel('System')
-            plt.ylabel('Durchschnittliche Initialisierungszeit (ms)')
-            plt.title(title)
-            plt.xticks(range(len(filtered_systeme)), filtered_systeme, rotation=45, ha='right')
+    if '4x4' not in size:
+        plt.ticklabel_format(style='plain', axis='y')
 
-            # Wissenschaftliche Notation deaktivieren
-            plt.ticklabel_format(style='plain', axis='y')
+    title = f'Average Initialization Time for Different Architectures ({size})'
+    sanitized_title = sanitize_filename(title)
+    filename = f"{sanitized_title}.png"
+    svg_filename = f"{sanitized_title}.svg"
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_folder, filename))
+    plt.savefig(os.path.join(output_folder, svg_filename), format='svg')
+    plt.close()
 
-            # Dateiname erstellen
-            sanitized_title = sanitize_filename(title)
-            filename = f"{sanitized_title}.png"
+create_and_save_combined_plot(data, systeme, agentensysteme, '9x9', output_folder, agentensystem_titel_map)
+create_and_save_combined_plot(data, systeme, agentensysteme, '4x4', output_folder, agentensystem_titel_map)
 
-            # Diagramm speichern
-            plt.tight_layout()
-            plt.savefig(os.path.join(output_folder, filename))
-            plt.close()
-
-
-# Plots erstellen und speichern
-create_and_save_plots(data, systeme, agentensysteme, sizes, output_folder, agentensystem_titel_map)

@@ -1,265 +1,150 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import os
-import re
 
-# Excel-Datei laden
-file_path = 'datenbank.xlsx'  # Pfad zu deiner Excel-Datei
-sheet_name = 'Ergebnisse'  # Name des neuen Arbeitsblatts
 
-# Daten aus der Excel-Datei laden
+file_path = 'datenbank.xlsx'
+sheet_name = 'Ergebnisse'
 data = pd.read_excel(file_path, sheet_name=sheet_name)
 
-# Systeme und Agentensysteme aus den Daten extrahieren
-data['System'] = data['System'].astype(str)  # Systeme als Strings behandeln
-systeme = sorted(data['System'].unique(), key=int)  # Systeme sortieren
-agentensysteme = data['Agentsystem'].unique()
-sizes = data['Size'].unique()  # Größen extrahieren
 
-# Ordner für die gespeicherten Plots
-output_folder = 'W:\\data\\03_Studium\\Bachelorarbeit\\Grafiken\\Plots'
-os.makedirs(output_folder, exist_ok=True)
+data['Erfolg'] = data['Erfolg'].str.lower()
 
 
-def sanitize_filename(title):
-    # Ersetze Umlaute
-    umlaut_map = str.maketrans({
-        'ä': 'ae',
-        'ö': 'oe',
-        'ü': 'ue',
-        'Ä': 'Ae',
-        'Ö': 'Oe',
-        'Ü': 'Ue',
-        'ß': 'ss'
-    })
-    title = title.translate(umlaut_map)
-    # Ersetze ungültige Zeichen im Dateinamen durch Unterstriche
-    title = re.sub(r'[^a-zA-Z0-9_\-]', '_', title)
-    return title
+level_configs = {
+    'Level 1': {
+        'systems': {
+            '24 Core': list(range(9, 17)),
+            '12 Core': list(range(51, 59)),
+            '4 Core': list(range(93, 101))
+        },
+        'testreihe_names': ['Problemorientiert (ASC)', 'Problemorientiert (DESC)', 'Problemorientiert (Random)',
+                            'Hierarchisch', 'Dezentral', 'Spezialisiert (ASC)', 'Spezialisiert (DESC)',
+                            'Spezialisiert (Random)']
+    },
+    'Level 2': {
+        'systems': {
+            '24 Core': list(range(17, 25)),
+            '12 Core': list(range(59, 67)),
+            '4 Core': list(range(101, 109))
+        },
+        'testreihe_names': ['Problemorientiert (ASC)', 'Problemorientiert (DESC)', 'Problemorientiert (Random)',
+                            'Hierarchisch', 'Dezentral', 'Spezialisiert (ASC)', 'Spezialisiert (DESC)',
+                            'Spezialisiert (Random)']
+    },
+    'Level 3': {
+        'systems': {
+            '24 Core': list(range(25, 33)),
+            '12 Core': list(range(67, 75)),
+            '4 Core': list(range(109, 117))
+        },
+        'testreihe_names': ['Problemorientiert (ASC)', 'Problemorientiert (DESC)', 'Problemorientiert (Random)',
+                            'Hierarchisch', 'Dezentral', 'Spezialisiert (ASC)', 'Spezialisiert (DESC)',
+                            'Spezialisiert (Random)']
+    },
+    'Level 4': {
+        'systems': {
+            '24 Core': list(range(33, 39)),
+            '12 Core': list(range(75, 81)),
+            '4 Core': list(range(117, 123))
+        },
+        'testreihe_names': ['Problemorientiert (ASC)', 'Problemorientiert (DESC)', 'Problemorientiert (Random)',
+                            'Spezialisiert (ASC)', 'Spezialisiert (DESC)', 'Spezialisiert (Random)']
+    },
+    'Level 5': {
+        'systems': {
+            '24 Core': list(range(39, 43)),
+            '12 Core': list(range(81, 85)),
+            '4 Core': list(range(123, 127))
+        },
+        'testreihe_names': ['Problemorientiert (ASC)',
+                            'Spezialisiert (ASC)', 'Spezialisiert (DESC)', 'Spezialisiert (Random)']
+    }
+}
 
-
-system_comparison_configs = {
-    'comparison_plot_9x9_level_1_constraint': {
-        'title': 'Problemorientierte Architektur - 9x9 Sudoku - Level 1',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [9, 51, 93],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'constraint'
-    },
-    'comparison_plot_9x9_level_2_constraint': {
-        'title': 'Problemorientierte Architektur - 9x9 Sudoku - Level 2',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [17, 59, 101],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'constraint'
-    },
-    'comparison_plot_9x9_level_3_constraint': {
-        'title': 'Problemorientierte Architektur - 9x9 Sudoku - Level 3',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [25, 67, 109],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'constraint'
-    },
-    'comparison_plot_9x9_level_4_constraint': {
-        'title': 'Problemorientierte Architektur - 9x9 Sudoku - Level 4',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [33, 75, 117],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'constraint'
-    },
-    'comparison_plot_9x9_level_5_constraint': {
-        'title': 'Problemorientierte Architektur - 9x9 Sudoku - Level 5',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [39, 81, 123],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'constraint'
-    },
-    'comparison_plot_4x4_constraint': {
-        'title': 'Problemorientierte Architektur - 4x4 Sudoku',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [1, 43, 85],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'constraint'
-    },
-    'comparison_plot_9x9_level_1_combined': {
-        'title': 'Spezialisierte Architektur - 9x9 Sudoku - Level 1',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [14, 56, 98],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'combined'
-    },
-    'comparison_plot_9x9_level_2_combined': {
-        'title': 'Spezialisierte Architektur - 9x9 Sudoku - Level 2',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [22, 64, 106],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'combined'
-    },
-    'comparison_plot_9x9_level_3_combined': {
-        'title': 'Spezialisierte Architektur - 9x9 Sudoku - Level 3',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [30, 72, 114],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'combined'
-    },
-    'comparison_plot_9x9_level_4_combined': {
-        'title': 'Spezialisierte Architektur - 9x9 Sudoku - Level 4',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [36, 78, 120],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'combined'
-    },
-    'comparison_plot_9x9_level_5_combined': {
-        'title': 'Spezialisierte Architektur - 9x9 Sudoku - Level 5',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [42, 84, 126],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'combined'
-    },
-    'comparison_plot_4x4_combined': {
-        'title': 'Spezialisierte Architektur - 4x4 Sudoku',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [6, 48, 90],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'combined'
-    },
-    'comparison_plot_9x9_level_1_hierarchical': {
-        'title': 'Hierarchische Architektur - 9x9 Sudoku - Level 1',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [12, 54, 96],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'hierarchical'
-    },
-    'comparison_plot_9x9_level_2_hierarchical': {
-        'title': 'Hierarchische Architektur - 9x9 Sudoku - Level 2',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [20, 62, 104],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'hierarchical'
-    },
-    'comparison_plot_9x9_level_3_hierarchical': {
-        'title': 'Hierarchische Architektur - 9x9 Sudoku - Level 3',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [28, 70, 112],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'hierarchical'
-    },
-    'comparison_plot_4x4_hierarchical': {
-        'title': 'Hierarchische Architektur - 4x4 Sudoku',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [4, 46, 88],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'hierarchical'
-    },
-    'comparison_plot_9x9_level_1_decentralized': {
-        'title': 'Dezentrale Architektur - 9x9 Sudoku - Level 1',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [13, 55, 97],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'decentralized'
-    },
-    'comparison_plot_9x9_level_2_decentralized': {
-        'title': 'Dezentrale Architektur - 9x9 Sudoku - Level 2',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [21, 63, 105],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'decentralized'
-    },
-    'comparison_plot_9x9_level_3_decentralized': {
-        'title': 'Dezentrale Architektur - 9x9 Sudoku - Level 3',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [29, 71, 113],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'decentralized'
-    },
-    'comparison_plot_4x4_decentralized': {
-        'title': 'Dezentrale Architektur - 4x4 Sudoku',
-        'xlabel': 'System',
-        'ylabel': 'Lösungszeit [ms]',
-        'testreihe_ids': [5, 47, 89],
-        'testreihe_names': ['24 Core', '12 Core', '4 Core'],
-        'parameter': 'Lösungszeit (ms)',
-        'architecture': 'decentralized'
+additional_config = {
+    '4x4 Sudoku': {
+        'systems': {
+            '24 Core': list(range(1, 9)),
+            '12 Core': list(range(43, 51)),
+            '4 Core': list(range(85, 93)),
+            '2 Core': list(range(127, 135))
+        },
+        'testreihe_names': ['Problemorientiert (ASC)', 'Problemorientiert (DESC)', 'Problemorientiert (Random)',
+                            'Hierarchisch', 'Dezentral', 'Spezialisiert (ASC)', 'Spezialisiert (DESC)',
+                            'Spezialisiert (Random)']
     }
 }
 
 
-def create_and_save_comparison_plots(configs, data):
+def calculate_statistics(data, configs, include_unsuccessful=False):
+    statistics = []
+
     for config_name, config in configs.items():
-        plt.figure(figsize=(12, 8))
+        for system, testreihe_ids in config['systems'].items():
+            for test_id, test_name in zip(testreihe_ids, config['testreihe_names']):
+                loesungszeit = data[data['Testreihe-ID'] == test_id]['Lösungszeit (ms)']
+                loesungsnachrichten = data[data['Testreihe-ID'] == test_id]['Lösungs-Nachrichten']
+                wertveraenderungen = data[data['Testreihe-ID'] == test_id]['Wertveränderungen']
+                erfolg = data[data['Testreihe-ID'] == test_id]['Erfolg']
 
-        # Daten filtern nach Architektur und Testreihe-IDs
-        data_filtered = data[
-            (data['Agentsystem'] == config['architecture']) & (data['Testreihe-ID'].isin(config['testreihe_ids']))]
+                if include_unsuccessful:
+                    avg_loesungszeit = loesungszeit.mean()
+                    std_loesungszeit = loesungszeit.std()
+                    median_loesungszeit = loesungszeit.median()
+                    avg_loesungsnachrichten = loesungsnachrichten.mean()
+                    std_loesungsnachrichten = loesungsnachrichten.std()
+                    median_loesungsnachrichten = loesungsnachrichten.median()
+                    avg_wertveraenderungen = wertveraenderungen.mean()
+                    std_wertveraenderungen = wertveraenderungen.std()
+                    median_wertveraenderungen = wertveraenderungen.median()
+                else:
+                    successful_filter = erfolg == 'ja'
+                    avg_loesungszeit = loesungszeit[successful_filter].mean()
+                    std_loesungszeit = loesungszeit[successful_filter].std()
+                    median_loesungszeit = loesungszeit[successful_filter].median()
+                    avg_loesungsnachrichten = loesungsnachrichten[successful_filter].mean()
+                    std_loesungsnachrichten = loesungsnachrichten[successful_filter].std()
+                    median_loesungsnachrichten = loesungsnachrichten[successful_filter].median()
+                    avg_wertveraenderungen = wertveraenderungen[successful_filter].mean()
+                    std_wertveraenderungen = wertveraenderungen[successful_filter].std()
+                    median_wertveraenderungen = wertveraenderungen[successful_filter].median()
 
-        # Debugging-Ausgaben
-        print(f"Gefilterte Daten für {config_name}: {data_filtered}")
+                stats = {
+                    'Kategorie': config_name,
+                    'System': system,
+                    'Architektur': test_name,
+                    'Durchschnittliche Lösungszeit': avg_loesungszeit,
+                    'Standardabweichung Lösungszeit': std_loesungszeit,
+                    'Median Lösungszeit': median_loesungszeit,
+                    'Durchschnittliche Lösungsnachrichten': avg_loesungsnachrichten,
+                    'Standardabweichung Lösungsnachrichten': std_loesungsnachrichten,
+                    'Median Lösungsnachrichten': median_loesungsnachrichten,
+                    'Durchschnittliche Wertveränderungen': avg_wertveraenderungen,
+                    'Standardabweichung Wertveränderungen': std_wertveraenderungen,
+                    'Median Wertveränderungen': median_wertveraenderungen,
+                    'Erfolgreiche Lösungen': (erfolg == 'ja').sum()
+                }
 
-        # Boxplot erstellen
-        data_to_plot = [data_filtered[data_filtered['Testreihe-ID'] == testreihe_id][config['parameter']].dropna() for
-                        testreihe_id in config['testreihe_ids']]
+                statistics.append(stats)
 
-        # Debugging-Ausgaben für die Daten, die geplottet werden
-        print(f"Daten zum Plotten für {config_name}: {data_to_plot}")
+    df = pd.DataFrame(statistics)
 
-        plt.boxplot(data_to_plot, tick_labels=config['testreihe_names'])
+    df = df.applymap(lambda x: '{:.2f}'.format(x) if isinstance(x, (int, float)) else x)
+    df = df.applymap(lambda x: x.rstrip('0').rstrip('.') if isinstance(x, str) and '.' in x else x)
 
-        # Achsenbeschriftungen und Titel
-        plt.xlabel(config['xlabel'])
-        plt.ylabel(config['ylabel'])
-        plt.title(config['title'])
-        plt.xticks(rotation=45, ha='right')
-
-        # Wissenschaftliche Notation deaktivieren
-        plt.ticklabel_format(style='plain', axis='y')
-
-        # Dateiname erstellen
-        sanitized_title = sanitize_filename(config['title'])
-        filename = f"{sanitized_title}.png"
-
-        # Diagramm speichern
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_folder, filename))
-        plt.close()
+    return df
 
 
-# Erstellen und speichern der Vergleichsplots
-create_and_save_comparison_plots(system_comparison_configs, data)
+statistics_df_include = calculate_statistics(data, level_configs, include_unsuccessful=True)
+statistics_df_exclude = calculate_statistics(data, level_configs, include_unsuccessful=False)
+additional_statistics_df_include = calculate_statistics(data, additional_config, include_unsuccessful=True)
+additional_statistics_df_exclude = calculate_statistics(data, additional_config, include_unsuccessful=False)
+
+with pd.ExcelWriter('Statistik_der_Testreihen.xlsx') as writer:
+    for level in level_configs.keys():
+        df_include = statistics_df_include[statistics_df_include['Kategorie'] == level]
+        df_exclude = statistics_df_exclude[statistics_df_exclude['Kategorie'] == level]
+        df_include.to_excel(writer, sheet_name=f'{level} (mnE)', index=False)
+        df_exclude.to_excel(writer, sheet_name=f'{level} (E)', index=False)
+    additional_statistics_df_include.to_excel(writer, sheet_name='4x4 Sudoku (mnE)', index=False)
+    additional_statistics_df_exclude.to_excel(writer, sheet_name='4x4 Sudoku (E)', index=False)
+
